@@ -3,6 +3,26 @@ import queue
 import threading
 from core import HOME, blocked, extract, site_url
 
+
+def error_message(exc, stage):
+    """Show useful categories without exposing credentials from exception text."""
+    text = str(exc).lower()
+    if 'executable doesn' in text or 'enoent' in text or 'winerror 2' in text:
+        reason = '浏览器组件缺失：请解压整个下载包，保留 _internal 文件夹'
+    elif 'err_invalid_auth_credentials' in text or '407' in text:
+        reason = 'HTTP 代理认证失败：请检查账号和密码'
+    elif 'err_proxy_connection_failed' in text or 'err_tunnel_connection_failed' in text:
+        reason = 'HTTP 代理连接失败：检查地址、端口及服务是否可用'
+    elif 'timeout' in text:
+        reason = '连接超时：请检查代理网络，或在浏览器点击刷新'
+    elif 'err_name_not_resolved' in text:
+        reason = '域名解析失败：请检查网络和代理'
+    elif 'targetclosed' in type(exc).__name__.lower() or 'target closed' in text:
+        reason = '浏览器已关闭或被系统阻止'
+    else:
+        reason = '操作失败，请检查完整解压、系统防护和代理连接'
+    return f'{stage}：{reason}（{type(exc).__name__}）'
+
 SNAPSHOT_JS = r'''() => {
   const root = document.querySelector('#personDetails') || document.querySelector('[itemtype$="/Person"]');
   const txt = el => el ? el.innerText.trim() : '';
@@ -32,6 +52,7 @@ class BrowserWorker(threading.Thread):
         self.events.put((kind, value))
 
     def run(self):
+        failed = False
         try:
             from playwright.sync_api import sync_playwright
             with sync_playwright() as p:
@@ -45,8 +66,13 @@ class BrowserWorker(threading.Thread):
                     page.set_default_navigation_timeout(15000)
                     context.on('page', lambda popup: popup.close())
                     page.on('dialog', lambda d: d.dismiss())
-                    page.goto(HOME, wait_until='domcontentloaded')
-                    self.emit('ready', '浏览器已打开。验证请人工完成，然后查询。')
+                    # Keep the window alive even when the proxy/homepage request fails.
+                    self.emit('ready', '浏览器已启动，正在访问网站…')
+                    try:
+                        page.goto(HOME, wait_until='domcontentloaded')
+                        self.emit('status', '浏览器已打开。验证请人工完成，然后查询。')
+                    except Exception as exc:
+                        self.emit('warning', error_message(exc, '网站加载失败'))
                     while not self.stop_event.is_set() and not page.is_closed():
                         try: command, data = self.commands.get_nowait()
                         except queue.Empty:
@@ -85,14 +111,14 @@ class BrowserWorker(threading.Thread):
                                 self.emit('status', '当前详情已保存到本机缓存，可导出 Excel')
                         except ValueError as exc:
                             self.emit('status', str(exc))
-                        except Exception:
-                            self.emit('status', '浏览器操作失败或超时；请检查页面和网络，再重试。未保存空结果。')
+                        except Exception as exc:
+                            self.emit('warning', error_message(exc, '浏览器操作失败'))
                         finally:
                             self.emit('idle', '')
                 finally:
                     browser.close()
-        except Exception:
-            # Exception strings may contain proxy credentials; never put them in logs.
-            self.emit('status', '浏览器启动或连接失败：检查 HTTP 代理、网络及浏览器组件。')
+        except Exception as exc:
+            failed = True
+            self.emit('error', error_message(exc, '浏览器启动失败'))
         finally:
-            self.emit('closed', '浏览器已停止；已采集结果仍可导出')
+            self.emit('closed', '' if failed else '浏览器已停止；已采集结果仍可导出')

@@ -5,6 +5,27 @@ from core import proxy_config, query_value, extract, export_xlsx, site_url
 
 
 class CoreTests(unittest.TestCase):
+    def test_errors_do_not_expose_credentials(self):
+        from browser import error_message
+        for error in ['Timeout http://secret_user:secret_password@proxy',
+                      'net::ERR_PROXY_CONNECTION_FAILED secret_password',
+                      "Executable doesn't exist secret_password"]:
+            msg = error_message(RuntimeError(error), '启动')
+            self.assertNotIn('secret_password', msg)
+            self.assertNotIn('secret_user', msg)
+
+    def test_worker_launch_failure_preserves_error(self):
+        import queue, sys, types
+        from unittest.mock import patch
+        from browser import BrowserWorker
+        def fail(): raise RuntimeError('net::ERR_PROXY_CONNECTION_FAILED secret_password')
+        events = queue.Queue()
+        with patch.dict(sys.modules, {'playwright':types.ModuleType('playwright'),
+                'playwright.sync_api':types.SimpleNamespace(sync_playwright=fail)}):
+            BrowserWorker(None, events).run()
+        self.assertEqual(events.get()[0], 'error')
+        self.assertEqual(events.get(), ('closed',''))
+
     def test_authenticated_http_and_colons_in_password(self):
         p = proxy_config('example.test:8080:user:pass:word')
         self.assertEqual(p['server'], 'http://example.test:8080')

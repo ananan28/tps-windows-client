@@ -1,4 +1,4 @@
-TPS Windows Client 0.1.0 — Windows x64 测试版
+TPS Windows Client 0.1.1 — Windows x64 测试版
 
 请解压整个下载包，再运行 TPSWindowsClient.exe。不要单独移动 EXE；_internal 是运行所需组件。
 程序包含 Chromium，无须另装 Python。该测试版未签名。

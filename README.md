@@ -1,10 +1,10 @@
-# TPS Windows Client 0.1.0
+# TPS Windows Client 0.1.1
 
 独立实现的 Windows x64 图形客户端。HTTP 认证代理、单线程可见 Chromium、单条手机号/邮箱查询、人工选择匹配详情、详情采集和 XLSX 导出。未复制参考仓库源码。
 
 ## 下载与使用
 
-打开本仓库 Actions 的 `Windows test build`，选择成功运行，在 Artifacts 下载 `TPSWindowsClient-0.1.0-Windows-x64`。解压整个目录，运行 `TPSWindowsClient.exe`。包含运行时和 Chromium，无需安装 Python；不能只移动 EXE。
+打开本仓库 Actions 的 `Windows test build`，选择成功运行，在 Artifacts 下载 `TPSWindowsClient-0.1.1-Windows-x64`。解压整个目录，运行 `TPSWindowsClient.exe`。包含运行时和 Chromium，无需安装 Python；不能只移动 EXE。
 
 1. 填写自己的 HTTP 代理：`host:port:user:password`；留空直连。凭据不落盘。
 2. 打开浏览器，网站验证请人工完成。
@@ -45,3 +45,7 @@ python app.py
 用户指定由 2026-10-03 当前创建对话维护。其他 GPT 窗口未经用户转交请勿修改、推送、合并或触发构建；见 `AGENTS.md`。此约定不构成 GitHub 权限锁。
 
 参考项目只用于此前可行性评估：https://github.com/qq1254870524/truepeoplesearch 。其许可证未明确，本项目没有引入其源码。
+
+## 0.1.1 启动修复
+
+首页加载超时或代理错误时保留浏览器窗口；启动失败弹出明确错误，不再被停止状态覆盖。诊断只保存错误类别，不保存代理凭据；位置 `%LOCALAPPDATA%\TPSWindowsClient\diagnostics.txt`。

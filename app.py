@@ -157,7 +157,14 @@ def main():
             try:
                 while True:
                     kind, value = self.events.get_nowait()
-                    if kind in ('status','ready','closed'): self.status.set(value)
+                    if kind in ('status','ready','closed','error','warning') and value:
+                        self.status.set(value)
+                    if kind == 'error':
+                        messagebox.showerror('浏览器启动失败', value)
+                    if kind in ('error', 'warning'):
+                        try:
+                            (data_dir() / 'diagnostics.txt').write_text(value, encoding='utf-8')
+                        except OSError: pass
                     if kind in ('idle','ready'): self.busy = False
                     if kind == 'closed': self.worker = None; self.busy = False
                     if kind == 'row':
