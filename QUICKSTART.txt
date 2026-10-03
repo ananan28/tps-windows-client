@@ -1,0 +1,16 @@
+TPS Windows Client 0.1.0 — Windows x64 测试版
+
+请解压整个下载包，再运行 TPSWindowsClient.exe。不要单独移动 EXE；_internal 是运行所需组件。
+程序包含 Chromium，无须另装 Python。该测试版未签名。
+
+1. 输入 HTTP 代理：host:port:user:password。该凭据只留在本次内存，不写入缓存。
+2. 点击打开浏览器；网站验证码请自己在浏览器完成。
+3. 选择 Phone/Email 搜索标签，在软件填一条授权资料，点击查询；若网站表单识别失败可手动查询。
+4. 在浏览器选择正确的 View Details 页面，软件点击采集当前详情。
+5. 核对结果后导出 Excel。
+
+停止关闭浏览器，已采集结果保留；再次打开可继续。窗口退出后也可从本机缓存恢复结果。
+缓存位于 %LOCALAPPDATA%\TPSWindowsClient\results.json，含采集资料；只在本机保存。
+没有批量自动匹配、验证码绕过、IP 轮换或远程上传。后台进程会占用本机 CPU 和内存。
+
+GitHub 构建验证只使用离线虚构页面；真实网站成功率须用你的代理在 Windows 上验收。
