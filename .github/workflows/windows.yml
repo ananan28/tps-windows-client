@@ -38,9 +38,24 @@ jobs:
           Copy-Item QUICKSTART.txt dist\TPSWindowsClient\QUICKSTART.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: TPSWindowsClient-0.1.1-Windows-x64
+          name: TPSWindowsClient-0.1.2-Windows-x64
           path: dist/TPSWindowsClient/
+          include-hidden-files: true
           retention-days: 14
+      - name: Download uploaded program for round-trip verification
+        uses: actions/download-artifact@v4
+        with:
+          name: TPSWindowsClient-0.1.2-Windows-x64
+          path: downloaded-client
+      - name: Verify actual downloaded program and browser
+        shell: pwsh
+        run: |
+          Remove-Item self-test-result.json -ErrorAction SilentlyContinue
+          $exe = Join-Path (Get-Location) 'downloaded-client\TPSWindowsClient.exe'
+          $proc = Start-Process -FilePath $exe -ArgumentList '--self-test' -PassThru
+          if (-not $proc.WaitForExit(120000)) { $proc.Kill(); throw 'Downloaded executable timed out' }
+          if ($proc.ExitCode -ne 0) { throw "Downloaded executable failed: $($proc.ExitCode)" }
+          if (-not (Test-Path self-test-result.json)) { throw 'Downloaded executable evidence missing' }
       - uses: actions/upload-artifact@v4
         with:
           name: offline-smoke-evidence
