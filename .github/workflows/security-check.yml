@@ -1,0 +1,42 @@
+name: Inspect existing Windows artifact
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/security-check.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 37099004150
+          name: TPSWindowsClient-0.1.2-Windows-x64
+          path: inspected-client
+      - name: Scan original downloaded package with Microsoft Defender
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path evidence -Force | Out-Null
+          $ErrorActionPreference = 'Stop'
+          $status = Get-MpComputerStatus
+          $status | Select-Object AMServiceEnabled,AntivirusEnabled,AntivirusSignatureVersion,AntivirusSignatureLastUpdated | ConvertTo-Json | Set-Content evidence/defender-status.json
+          if (-not $status.AntivirusEnabled) { throw 'Defender unavailable; scan cannot be claimed' }
+          $files = Get-ChildItem inspected-client -Recurse -File -Force
+          $files | ForEach-Object { [pscustomobject]@{Path=$_.FullName.Substring((Get-Location).Path.Length+1);SHA256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash;Size=$_.Length} } | ConvertTo-Json -Depth 4 | Set-Content evidence/file-hashes.json
+          Get-AuthenticodeSignature inspected-client/TPSWindowsClient.exe | Select-Object Status,StatusMessage | ConvertTo-Json | Set-Content evidence/signature.json
+          $mp = Get-ChildItem 'C:\ProgramData\Microsoft\Windows Defender\Platform\*\MpCmdRun.exe' | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $mp) { throw 'Defender command missing' }
+          & $mp.FullName -Scan -ScanType 3 -File (Join-Path (Get-Location) 'inspected-client') -DisableRemediation 2>&1 | Tee-Object evidence/scan.txt
+          $scanExit = $LASTEXITCODE
+          @{exit_code=$scanExit;source_run=37099004150;source_artifact=11265656962;chrome_safe_browsing='not_tested'} | ConvertTo-Json | Set-Content evidence/result.json
+          if ($scanExit -ne 0) { throw "Defender scan needs investigation: exit $scanExit" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-evidence-original-0.1.3
+          path: evidence/
