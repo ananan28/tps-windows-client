@@ -20,7 +20,7 @@ def data_dir():
 def self_test():
     """Offline bundled browser + actual XLSX smoke test; no real people or network."""
     from playwright.sync_api import sync_playwright
-    from browser import SNAPSHOT_JS, submit_search
+    from browser import SNAPSHOT_JS, submit_search, open_context
     from core import extract
     import tempfile
     with sync_playwright() as p:
@@ -51,12 +51,24 @@ def self_test():
                 export_xlsx([row], dest)
                 assert dest.exists()
         finally: b.close()
+        with tempfile.TemporaryDirectory() as profile:
+            ctx = open_context(p, None, 'chrome', profile, headless=True)
+            try:
+                ctx.add_cookies([{'name': 'offline_test', 'value': 'retained',
+                    'domain': 'example.test', 'path': '/', 'expires': 2000000000}])
+            finally:
+                ctx.close()
+            ctx = open_context(p, None, 'chrome', profile, headless=True)
+            try:
+                assert any(c['name'] == 'offline_test' for c in ctx.cookies())
+            finally:
+                ctx.close()
     # Verify that the packaged Tcl/Tk runtime can create a window on Windows.
     import tkinter as tk
     root = tk.Tk(); root.withdraw(); root.update(); root.destroy()
     Path('self-test-result.json').write_text(json.dumps({
         'version': VERSION, 'offline_browser': 'passed', 'xlsx': 'passed',
-        'tkinter': 'passed', 'query_tab_submit_and_rate_limit': 'passed', 'live_site': 'not_tested'}), encoding='utf-8')
+        'tkinter': 'passed', 'installed_chrome_persistent_session': 'passed', 'query_tab_submit_and_rate_limit': 'passed', 'live_site': 'not_tested'}), encoding='utf-8')
 
 
 def main():
@@ -76,6 +88,7 @@ def main():
             self.proxy = tk.StringVar()
             self.query = tk.StringVar()
             self.kind = tk.StringVar(value='手机号')
+            self.engine = tk.StringVar(value='本机 Chrome')
             self.consent = tk.BooleanVar()
             self.status = tk.StringVar(value='填写 HTTP 代理 → 打开浏览器 → 查询 → 打开详情 → 采集 → 导出')
             root.title(f'TPS Windows Client {VERSION} · 测试版')
@@ -89,6 +102,8 @@ def main():
             self.proxy_entry = ttk.Entry(frame, textvariable=self.proxy, show='•')
             self.proxy_entry.pack(fill='x', pady=5)
             tools = ttk.Frame(frame); tools.pack(fill='x')
+            self.engine_select = ttk.Combobox(tools, values=['本机 Chrome', '内置 Chromium'], textvariable=self.engine, state='readonly', width=15)
+            self.engine_select.pack(side='right')
             self.open_button = ttk.Button(tools, text='1. 打开浏览器', command=self.start); self.open_button.pack(side='left')
             self.home_button = ttk.Button(tools, text='返回首页', command=lambda: self.send('home')); self.home_button.pack(side='left', padx=5)
             ttk.Button(tools, text='停止浏览器', command=self.stop).pack(side='left')
@@ -130,6 +145,7 @@ def main():
             running = self.worker is not None
             self.open_button.configure(state='disabled' if running else 'normal')
             self.proxy_entry.configure(state='disabled' if running else 'normal')
+            self.engine_select.configure(state='disabled' if running else 'readonly')
             for button in (self.home_button, self.search_button, self.collect_button):
                 button.configure(state='normal' if running and not self.busy and not self.closing else 'disabled')
 
@@ -139,7 +155,7 @@ def main():
             except ValueError as exc:
                 messagebox.showerror('代理格式', str(exc)); return
             self.busy = True
-            self.worker = BrowserWorker(proxy, self.events)
+            self.worker = BrowserWorker(proxy, self.events, 'chrome' if self.engine.get() == '本机 Chrome' else 'chromium')
             self.worker.start(); self.buttons(); self.status.set('正在启动浏览器…')
 
         def send(self, command, data=None):

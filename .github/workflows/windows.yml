@@ -36,16 +36,35 @@ jobs:
           if ($proc.ExitCode -ne 0) { throw "Smoke test failed: $($proc.ExitCode)" }
           if (-not (Test-Path self-test-result.json)) { throw 'Smoke test evidence missing' }
           Copy-Item QUICKSTART.txt dist\TPSWindowsClient\QUICKSTART.txt
+      - name: Defender scan before publishing
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path security-evidence -Force | Out-Null
+          $status = Get-MpComputerStatus
+          $status | Select-Object AntivirusEnabled,AntivirusSignatureVersion,AntivirusSignatureLastUpdated | ConvertTo-Json | Set-Content security-evidence/defender-status.json
+          if (-not $status.AntivirusEnabled) { throw 'Defender unavailable' }
+          $mp = Get-ChildItem 'C:\ProgramData\Microsoft\Windows Defender\Platform\*\MpCmdRun.exe' | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $mp) { throw 'Defender command missing' }
+          & $mp.FullName -Scan -ScanType 3 -File (Join-Path (Get-Location) 'dist/TPSWindowsClient') -DisableRemediation 2>&1 | Tee-Object security-evidence/scan.txt
+          $scanExit = $LASTEXITCODE
+          @{exit_code=$scanExit;chrome_safe_browsing='not_tested'} | ConvertTo-Json | Set-Content security-evidence/result.json
+          Get-FileHash dist/TPSWindowsClient/TPSWindowsClient.exe -Algorithm SHA256 | ConvertTo-Json | Set-Content security-evidence/exe-hash.json
+          if ($scanExit -ne 0) { throw "Defender scan failed: $scanExit" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-evidence-0.1.4
+          path: security-evidence/
       - uses: actions/upload-artifact@v4
         with:
-          name: TPSWindowsClient-0.1.2-Windows-x64
+          name: TPSWindowsClient-0.1.4-Windows-x64
           path: dist/TPSWindowsClient/
           include-hidden-files: true
           retention-days: 14
       - name: Download uploaded program for round-trip verification
         uses: actions/download-artifact@v4
         with:
-          name: TPSWindowsClient-0.1.2-Windows-x64
+          name: TPSWindowsClient-0.1.4-Windows-x64
           path: downloaded-client
       - name: Verify actual downloaded program and browser
         shell: pwsh

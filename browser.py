@@ -2,7 +2,26 @@
 import queue
 import threading
 import re
+import os
+import hashlib
+from pathlib import Path
 from core import HOME, blocked, extract, site_url
+
+
+def profile_dir(proxy, channel):
+    identity = (proxy or {}).get('server', 'direct') + '|' + (proxy or {}).get('username', '')
+    key = hashlib.sha256(identity.encode()).hexdigest()[:16]
+    base = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'TPSWindowsClient'
+    return base / 'browser-profiles' / channel / key
+
+
+def open_context(playwright, proxy, channel, directory, headless=False):
+    options = {'headless': headless, 'accept_downloads': False}
+    if proxy:
+        options['proxy'] = proxy
+    if channel == 'chrome':
+        options['channel'] = 'chrome'
+    return playwright.chromium.launch_persistent_context(str(directory), **options)
 
 
 def check_access(page):
@@ -61,7 +80,7 @@ def error_message(exc, stage):
     """Show useful categories without exposing credentials from exception text."""
     text = str(exc).lower()
     if 'executable doesn' in text or 'enoent' in text or 'winerror 2' in text:
-        reason = '浏览器组件缺失：请解压整个下载包，保留 _internal 文件夹'
+        reason = '浏览器组件缺失：使用本机 Chrome 时请确认已安装 Google Chrome；使用内置 Chromium 时请完整解压下载包'
     elif 'err_invalid_auth_credentials' in text or '407' in text:
         reason = 'HTTP 代理认证失败：请检查账号和密码'
     elif 'err_proxy_connection_failed' in text or 'err_tunnel_connection_failed' in text:
@@ -94,9 +113,10 @@ SNAPSHOT_JS = r'''() => {
 
 
 class BrowserWorker(threading.Thread):
-    def __init__(self, proxy, events):
+    def __init__(self, proxy, events, channel="chrome"):
         super().__init__(daemon=True)
         self.proxy = proxy
+        self.channel = channel
         self.events = events
         self.commands = queue.Queue()
         self.stop_event = threading.Event()
@@ -109,12 +129,9 @@ class BrowserWorker(threading.Thread):
         try:
             from playwright.sync_api import sync_playwright
             with sync_playwright() as p:
-                options = {'headless': False}
-                if self.proxy: options['proxy'] = self.proxy
-                browser = p.chromium.launch(**options)
+                context = open_context(p, self.proxy, self.channel, profile_dir(self.proxy, self.channel))
                 try:
-                    context = browser.new_context(accept_downloads=False)
-                    page = context.new_page()
+                    page = context.pages[0] if context.pages else context.new_page()
                     page.set_default_timeout(7000)
                     page.set_default_navigation_timeout(15000)
                     context.on('page', lambda popup: popup.close())
@@ -151,7 +168,7 @@ class BrowserWorker(threading.Thread):
                         finally:
                             self.emit('idle', '')
                 finally:
-                    browser.close()
+                    context.close()
         except Exception as exc:
             failed = True
             self.emit('error', error_message(exc, '浏览器启动失败'))
