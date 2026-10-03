@@ -20,7 +20,7 @@ def data_dir():
 def self_test():
     """Offline bundled browser + actual XLSX smoke test; no real people or network."""
     from playwright.sync_api import sync_playwright
-    from browser import SNAPSHOT_JS
+    from browser import SNAPSHOT_JS, submit_search
     from core import extract
     import tempfile
     with sync_playwright() as p:
@@ -33,6 +33,19 @@ def self_test():
             row = extract(page.evaluate(SNAPSHOT_JS))
             assert row['name'] == 'Test Person'
             assert row['phones'] == '2025550123'
+            fixture = '''<button id="searchTypePhone-d" onclick="document.querySelector('form').style.display='block'">Phone</button>
+                <form style="display:none" action="/resultphone"><input id="id-d-ph" name="phoneno">
+                <button id="btnSubmit-d-ph" type="submit">Search</button></form>'''
+            page.unroute('https://www.truepeoplesearch.com/**')
+            page.route('https://www.truepeoplesearch.com/**', lambda route: route.fulfill(
+                content_type='text/html', body=fixture if route.request.url.endswith('/') else 'This IP has been rate limited'))
+            page.goto('https://www.truepeoplesearch.com/')
+            try:
+                submit_search(page, '手机号', '2025550123')
+                raise AssertionError('Rate limiting must be reported')
+            except ValueError as exc:
+                assert 'IP 被限流' in str(exc)
+            assert 'phoneno=2025550123' in page.url
             with tempfile.TemporaryDirectory() as d:
                 dest = Path(d) / 'smoke.xlsx'
                 export_xlsx([row], dest)
@@ -43,7 +56,7 @@ def self_test():
     root = tk.Tk(); root.withdraw(); root.update(); root.destroy()
     Path('self-test-result.json').write_text(json.dumps({
         'version': VERSION, 'offline_browser': 'passed', 'xlsx': 'passed',
-        'tkinter': 'passed', 'live_site': 'not_tested'}), encoding='utf-8')
+        'tkinter': 'passed', 'query_tab_submit_and_rate_limit': 'passed', 'live_site': 'not_tested'}), encoding='utf-8')
 
 
 def main():
@@ -85,15 +98,15 @@ def main():
             self.search_button = ttk.Button(line, text='2. 查询', command=self.search); self.search_button.pack(side='left')
             self.collect_button = ttk.Button(line, text='3. 采集当前详情', command=self.collect); self.collect_button.pack(side='left', padx=5)
             ttk.Checkbutton(frame, text='我确认仅查询自己的或获得授权的测试资料', variable=self.consent).pack(anchor='w')
-            ttk.Label(frame, text='在浏览器选择 Phone/Email 标签；结果页请自己选择正确人员，避免自动匹配错人。').pack(anchor='w', pady=6)
+            ttk.Label(frame, text='查询时自动切换 Phone/Email 标签；结果页请自己选择正确人员。').pack(anchor='w', pady=6)
             self.table = ttk.Treeview(frame, columns=('name','age','phones','emails'), show='headings')
             for key, label in [('name','姓名'),('age','年龄'),('phones','电话'),('emails','邮箱')]:
                 self.table.heading(key, text=label); self.table.column(key, width=180)
             self.table.pack(fill='both', expand=True, pady=8)
-            bottom = ttk.Frame(frame); bottom.pack(fill='x')
+            bottom = ttk.Frame(frame); bottom.pack(side='bottom', fill='x', before=self.table)
             ttk.Button(bottom, text='4. 导出 Excel', command=self.export).pack(side='left')
             ttk.Button(bottom, text='清空本机结果', command=self.clear).pack(side='left', padx=8)
-            ttk.Label(frame, textvariable=self.status, wraplength=980).pack(anchor='w', pady=(12,0))
+            ttk.Label(frame, textvariable=self.status, wraplength=760).pack(side='bottom', fill='x', pady=(6,0), before=self.table)
             try:
                 cached = json.loads(self.cache.read_text(encoding='utf-8'))
                 if isinstance(cached, list):
@@ -141,6 +154,7 @@ def main():
             except ValueError as exc:
                 messagebox.showerror('查询资料', str(exc)); return
             self.last_query = value
+            self.status.set('正在提交查询…')
             self.send('search', (self.kind.get(), value))
 
         def collect(self):
@@ -161,6 +175,8 @@ def main():
                         self.status.set(value)
                     if kind == 'error':
                         messagebox.showerror('浏览器启动失败', value)
+                    if kind == 'warning':
+                        messagebox.showwarning('浏览器操作提示', value)
                     if kind in ('error', 'warning'):
                         try:
                             (data_dir() / 'diagnostics.txt').write_text(value, encoding='utf-8')

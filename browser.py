@@ -1,7 +1,60 @@
 """All browser calls stay on one worker thread; GUI receives queue events."""
 import queue
 import threading
+import re
 from core import HOME, blocked, extract, site_url
+
+
+def check_access(page):
+    text = page.locator('body').inner_text(timeout=3000)
+    if 'rate limited' in text.lower():
+        raise ValueError('网站明确提示当前 IP 被限流；查询已被拒绝，不代表没有结果。请停止重试，等待网站解除限制或联系网站。')
+    if blocked(text, page.url):
+        raise ValueError('网站要求人工验证或限制访问；请在浏览器处理后再查询')
+
+
+def first_visible(locator):
+    for i in range(locator.count()):
+        if locator.nth(i).is_visible():
+            return locator.nth(i)
+    return None
+
+
+def submit_search(page, kind, value):
+    if not site_url(page.url):
+        raise ValueError('请先返回官网首页')
+    check_access(page)
+    phone = kind == '手机号'
+    label = 'Phone' if phone else 'Email'
+    prefix = 'Phone' if phone else 'Email'
+    tab = first_visible(page.locator(f'#searchType{prefix}-d, #searchType{prefix}-m'))
+    if tab is None:
+        tab = first_visible(page.get_by_text(re.compile(r'^' + label + r'$', re.I)))
+    if tab is not None:
+        tab.click()
+    selectors = ('#id-d-ph, #id-m-ph, input[type="tel"], input[name*="phone" i]' if phone
+                 else '#id-d-email, #id-m-email, input[type="email"], input[name*="email" i]')
+    field = None
+    for _ in range(20):
+        field = first_visible(page.locator(selectors))
+        if field is not None: break
+        page.wait_for_timeout(100)
+    if field is None:
+        raise ValueError('未找到可见的查询输入框；网页结构可能变化，请在浏览器手动查询')
+    field.fill(value)
+    form = field.locator('xpath=ancestor::form[1]')
+    submit = first_visible(page.locator('#btnSubmit-d-ph, #btnSubmit-m-ph' if phone else '#btnSubmit-d-email, #btnSubmit-m-email'))
+    if submit is None:
+        submit = first_visible(form.locator('button[type="submit"], input[type="submit"]'))
+    before = page.url
+    if submit is not None: submit.click()
+    else: field.press('Enter')
+    for _ in range(40):
+        page.wait_for_timeout(250)
+        check_access(page)
+        if page.url != before:
+            return
+    raise ValueError('提交后网址没有变化；请检查浏览器提示或手动提交。软件未确认查询成功。')
 
 
 def error_message(exc, stage):
@@ -83,26 +136,8 @@ class BrowserWorker(threading.Thread):
                                 page.goto(HOME, wait_until='domcontentloaded')
                                 self.emit('status', '已返回首页')
                             elif command == 'search':
-                                kind, value = data
-                                if not site_url(page.url):
-                                    raise ValueError('请先返回官网首页')
-                                text = page.locator('body').inner_text(timeout=3000)
-                                if blocked(text, page.url):
-                                    raise ValueError('请先在浏览器人工完成验证，然后重试查询')
-                                # Standard form field names; no CAPTCHA interaction or stealth patches.
-                                input_sel = 'input[type="email"], input[name*="email" i]' if kind == '邮箱' else 'input[type="tel"], input[name*="phone" i]'
-                                candidates = page.locator(input_sel)
-                                field = None
-                                for i in range(candidates.count()):
-                                    if candidates.nth(i).is_visible():
-                                        field = candidates.nth(i); break
-                                if field is None:
-                                    raise ValueError('请在浏览器选择对应 Phone/Email 搜索标签，再点查询；也可手动查询')
-                                field.fill(value)
-                                form = field.locator('xpath=ancestor::form[1]')
-                                submit = form.locator('button[type="submit"], input[type="submit"]')
-                                if submit.count() and submit.first.is_visible(): submit.first.click()
-                                else: field.press('Enter')
+                                self.emit('status', '正在切换查询标签并提交…')
+                                submit_search(page, *data)
                                 self.emit('status', '已提交查询，请选择匹配的详情；遇验证请人工完成')
                             elif command == 'collect':
                                 row = extract(page.evaluate(SNAPSHOT_JS))
@@ -110,7 +145,7 @@ class BrowserWorker(threading.Thread):
                                 self.emit('row', row)
                                 self.emit('status', '当前详情已保存到本机缓存，可导出 Excel')
                         except ValueError as exc:
-                            self.emit('status', str(exc))
+                            self.emit('warning', str(exc))
                         except Exception as exc:
                             self.emit('warning', error_message(exc, '浏览器操作失败'))
                         finally:

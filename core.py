@@ -4,7 +4,7 @@ import re
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
-VERSION = '0.1.2'
+VERSION = '0.1.3'
 HOME = 'https://www.truepeoplesearch.com/'
 
 
