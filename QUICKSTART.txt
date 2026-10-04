@@ -1,9 +1,6 @@
-TPS Windows Client 0.1.4（Windows 测试版）
-完整解压 ZIP，运行 TPSWindowsClient.exe。
-默认使用已安装的 Google Chrome；没有 Chrome 可选择“内置 Chromium”。
-填写 HTTP 代理，打开浏览器，人工完成网站验证，然后查询自己的或获授权的资料。
-结果页选择人员，打开详情，点击采集，再导出 Excel。
-软件使用独立的本机会话目录，关闭后保留 Cookie；不读取日常 Chrome 资料。
-切换浏览器或代理需先停止浏览器。相同代理地址和账号复用会话。
-遇到网站限流或验证时停止自动操作，不绕过网站限制。
-离线测试不代表真实网站访问成功；安全扫描不保证 Chrome 下载放行。
+TPS Windows Client 0.1.5 轻量测试版
+需要已安装 Google Chrome。完整解压后运行 TPSWindowsClient.exe。
+软件不附带 Chromium，不下载浏览器。填写 HTTP 代理，打开浏览器；验证由本人完成。
+仅查询自己的或获得授权的资料，详情页采集后可导出 Excel。
+Defender 扫描通过不保证 Chrome 下载放行；遇危险警告不要关闭防护。
+真实网站查询仍需用户环境验收。

@@ -19,8 +19,7 @@ def open_context(playwright, proxy, channel, directory, headless=False):
     options = {'headless': headless, 'accept_downloads': False}
     if proxy:
         options['proxy'] = proxy
-    if channel == 'chrome':
-        options['channel'] = 'chrome'
+    options['channel'] = 'chrome'
     return playwright.chromium.launch_persistent_context(str(directory), **options)
 
 
@@ -80,7 +79,7 @@ def error_message(exc, stage):
     """Show useful categories without exposing credentials from exception text."""
     text = str(exc).lower()
     if 'executable doesn' in text or 'enoent' in text or 'winerror 2' in text:
-        reason = '浏览器组件缺失：使用本机 Chrome 时请确认已安装 Google Chrome；使用内置 Chromium 时请完整解压下载包'
+        reason = '未找到 Google Chrome，请先安装 Chrome；轻量版不包含浏览器'
     elif 'err_invalid_auth_credentials' in text or '407' in text:
         reason = 'HTTP 代理认证失败：请检查账号和密码'
     elif 'err_proxy_connection_failed' in text or 'err_tunnel_connection_failed' in text:

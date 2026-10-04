@@ -24,7 +24,7 @@ def self_test():
     from core import extract
     import tempfile
     with sync_playwright() as p:
-        b = p.chromium.launch(headless=True)
+        b = p.chromium.launch(headless=True, channel='chrome')
         try:
             page = b.new_page()
             page.route('https://www.truepeoplesearch.com/**', lambda route: route.fulfill(
@@ -102,7 +102,7 @@ def main():
             self.proxy_entry = ttk.Entry(frame, textvariable=self.proxy, show='•')
             self.proxy_entry.pack(fill='x', pady=5)
             tools = ttk.Frame(frame); tools.pack(fill='x')
-            self.engine_select = ttk.Combobox(tools, values=['本机 Chrome', '内置 Chromium'], textvariable=self.engine, state='readonly', width=15)
+            self.engine_select = ttk.Combobox(tools, values=['本机 Chrome'], textvariable=self.engine, state='readonly', width=15)
             self.engine_select.pack(side='right')
             self.open_button = ttk.Button(tools, text='1. 打开浏览器', command=self.start); self.open_button.pack(side='left')
             self.home_button = ttk.Button(tools, text='返回首页', command=lambda: self.send('home')); self.home_button.pack(side='left', padx=5)
@@ -155,7 +155,7 @@ def main():
             except ValueError as exc:
                 messagebox.showerror('代理格式', str(exc)); return
             self.busy = True
-            self.worker = BrowserWorker(proxy, self.events, 'chrome' if self.engine.get() == '本机 Chrome' else 'chromium')
+            self.worker = BrowserWorker(proxy, self.events, 'chrome')
             self.worker.start(); self.buttons(); self.status.set('正在启动浏览器…')
 
         def send(self, command, data=None):
