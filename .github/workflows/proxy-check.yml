@@ -1,4 +1,5 @@
 name: One proxy access check
+# Verify Phone tab after homepage load; no query submitted.
 on:
   workflow_dispatch:
   push:
