@@ -33,9 +33,10 @@ def self_test():
             row = extract(page.evaluate(SNAPSHOT_JS))
             assert row['name'] == 'Test Person'
             assert row['phones'] == '2025550123'
-            fixture = '''<button id="searchTypePhone-d" onclick="document.querySelector('form').style.display='block'">Phone</button>
-                <form style="display:none" action="/resultphone"><input id="id-d-ph" name="phoneno">
-                <button id="btnSubmit-d-ph" type="submit">Search</button></form>'''
+            fixture = '''<label for="phone-tab"> Phone </label><input id="phone-tab" type="radio"
+                onchange="document.querySelector('form').style.display='block'">
+                <form style="display:none" action="/resultphone"><input type="text" placeholder="Enter phone number" name="q">
+                <button type="submit">Search</button></form>'''
             page.unroute('https://www.truepeoplesearch.com/**')
             page.route('https://www.truepeoplesearch.com/**', lambda route: route.fulfill(
                 content_type='text/html', body=fixture if route.request.url.endswith('/') else 'This IP has been rate limited'))
@@ -45,7 +46,7 @@ def self_test():
                 raise AssertionError('Rate limiting must be reported')
             except ValueError as exc:
                 assert 'IP 被限流' in str(exc)
-            assert 'phoneno=2025550123' in page.url
+            assert 'q=2025550123' in page.url
             with tempfile.TemporaryDirectory() as d:
                 dest = Path(d) / 'smoke.xlsx'
                 export_xlsx([row], dest)
