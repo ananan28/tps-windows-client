@@ -26,3 +26,5 @@ jobs:
         with:
           name: proxy-access-evidence
           path: live-access-result.json
+
+# Checked Python syntax before diagnostic run.
