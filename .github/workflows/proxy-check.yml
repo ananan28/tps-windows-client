@@ -1,0 +1,24 @@
+name: One proxy access check
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  proxy-access:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - name: Visit homepage once through configured proxy
+        env:
+          TPS_HTTP_PROXY: ${{ secrets.TPS_HTTP_PROXY }}
+        run: python proxy_access_check.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: proxy-access-evidence
+          path: live-access-result.json
