@@ -20,7 +20,7 @@ def data_dir():
 def self_test():
     """Offline bundled browser + actual XLSX smoke test; no real people or network."""
     from playwright.sync_api import sync_playwright
-    from browser import SNAPSHOT_JS, submit_search, open_context
+    from browser import SNAPSHOT_JS, submit_search, open_context, AccessBlocked
     from core import extract
     import tempfile
     with sync_playwright() as p:
@@ -34,7 +34,7 @@ def self_test():
             assert row['name'] == 'Test Person'
             assert row['phones'] == '2025550123'
             fixture = '''<label for="phone-tab"> Phone </label><input id="phone-tab" type="radio"
-                onchange="document.querySelector('form').style.display='block'">
+                onchange="setTimeout(()=>document.querySelector('form').style.display='block',800)">
                 <form style="display:none" action="/resultphone"><input type="text" placeholder="Enter phone number" name="q">
                 <button type="submit">Search</button></form>'''
             page.unroute('https://www.truepeoplesearch.com/**')
@@ -45,8 +45,19 @@ def self_test():
                 submit_search(page, '手机号', '2025550123')
                 raise AssertionError('Rate limiting must be reported')
             except ValueError as exc:
-                assert 'IP 被限流' in str(exc)
+                assert '限流' in str(exc)
+                assert isinstance(exc, AccessBlocked) and exc.submitted
             assert 'q=2025550123' in page.url
+            page.unroute('https://www.truepeoplesearch.com/**')
+            page.route('https://www.truepeoplesearch.com/**', lambda route: route.fulfill(
+                content_type='text/html', body='<p>Verify you are human</p>' + fixture))
+            page.goto('https://www.truepeoplesearch.com/')
+            try:
+                submit_search(page, '手机号', '2025550123')
+                raise AssertionError('Challenge must pause before typing')
+            except AccessBlocked as exc:
+                assert not exc.submitted
+            assert page.url == 'https://www.truepeoplesearch.com/'
             with tempfile.TemporaryDirectory() as d:
                 dest = Path(d) / 'smoke.xlsx'
                 export_xlsx([row], dest)
@@ -91,6 +102,7 @@ def main():
             self.kind = tk.StringVar(value='手机号')
             self.engine = tk.StringVar(value='本机 Chrome')
             self.consent = tk.BooleanVar()
+            self.auto_search = tk.BooleanVar(value=True)
             self.status = tk.StringVar(value='填写 HTTP 代理 → 打开浏览器 → 查询 → 打开详情 → 采集 → 导出')
             root.title(f'TPS Windows Client {VERSION} · 测试版')
             root.geometry('1050x620'); root.minsize(820, 500)
@@ -108,12 +120,15 @@ def main():
             self.open_button = ttk.Button(tools, text='1. 打开浏览器', command=self.start); self.open_button.pack(side='left')
             self.home_button = ttk.Button(tools, text='返回首页', command=lambda: self.send('home')); self.home_button.pack(side='left', padx=5)
             ttk.Button(tools, text='停止浏览器', command=self.stop).pack(side='left')
+            self.resume_button = ttk.Button(tools, text='继续查询', command=lambda: self.send('resume'))
+            self.resume_button.pack(side='left', padx=5)
             line = ttk.Frame(frame); line.pack(fill='x', pady=12)
             ttk.Combobox(line, values=['手机号', '邮箱'], textvariable=self.kind, state='readonly', width=9).pack(side='left')
             ttk.Entry(line, textvariable=self.query).pack(side='left', fill='x', expand=True, padx=8)
             self.search_button = ttk.Button(line, text='2. 查询', command=self.search); self.search_button.pack(side='left')
             self.collect_button = ttk.Button(line, text='3. 采集当前详情', command=self.collect); self.collect_button.pack(side='left', padx=5)
             ttk.Checkbutton(frame, text='我确认仅查询自己的或获得授权的测试资料', variable=self.consent).pack(anchor='w')
+            ttk.Checkbutton(frame, text='打开后自动查询已填写的号码/邮箱（须先勾选授权）', variable=self.auto_search).pack(anchor='w')
             ttk.Label(frame, text='查询时自动切换 Phone/Email 标签；结果页请自己选择正确人员。').pack(anchor='w', pady=6)
             self.table = ttk.Treeview(frame, columns=('name','age','phones','emails'), show='headings')
             for key, label in [('name','姓名'),('age','年龄'),('phones','电话'),('emails','邮箱')]:
@@ -147,7 +162,7 @@ def main():
             self.open_button.configure(state='disabled' if running else 'normal')
             self.proxy_entry.configure(state='disabled' if running else 'normal')
             self.engine_select.configure(state='disabled' if running else 'readonly')
-            for button in (self.home_button, self.search_button, self.collect_button):
+            for button in (self.home_button, self.search_button, self.collect_button, self.resume_button):
                 button.configure(state='normal' if running and not self.busy and not self.closing else 'disabled')
 
         def start(self):
@@ -199,6 +214,8 @@ def main():
                             (data_dir() / 'diagnostics.txt').write_text(value, encoding='utf-8')
                         except OSError: pass
                     if kind in ('idle','ready'): self.busy = False
+                    if kind == 'ready' and self.auto_search.get() and self.query.get().strip() and self.consent.get():
+                        self.search()
                     if kind == 'closed': self.worker = None; self.busy = False
                     if kind == 'row':
                         if not any(r.get('source_url') == value['source_url'] and r.get('query') == value['query'] for r in self.rows):

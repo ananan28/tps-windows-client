@@ -6,6 +6,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from playwright.sync_api import sync_playwright
 from core import HOME, blocked, proxy_config
+from browser import prepare_search, AccessBlocked
 raw = os.environ.get('TPS_HTTP_PROXY', '').strip()
 if not raw:
     print('Proxy secret TPS_HTTP_PROXY is missing; no live request made')
@@ -29,21 +30,15 @@ with sync_playwright() as p:
         result['blocked'] = blocked(text, page.url)
         result['state'] = 'blocked_stop' if result['blocked'] or result['http_status'] in (403,429) else 'homepage_loaded'
         if result['state'] == 'homepage_loaded':
-            import re
-            page.wait_for_load_state('load', timeout=10000)
-            result['phone_tab_test'] = 'not_found'
-            candidates = page.get_by_text(re.compile(r'^\s*Phone\s*$', re.I))
-            for i in range(candidates.count()):
-                candidate = candidates.nth(i)
-                if candidate.is_visible():
-                    candidate.click()
-                    try:
-                        page.locator('#id-d-ph').wait_for(state='visible', timeout=5000)
-                        result['phone_tab_test'] = 'passed'
-                    except Exception:
-                        result['phone_tab_test'] = 'clicked_but_field_hidden'
-                    break
-            result['short_phone_elements'] = page.locator('body *').evaluate_all("""els => els.filter(e => (e.textContent||'').includes('Phone') && (e.textContent||'').trim().length < 24 && e.getClientRects().length).map(e=>({tag:e.tagName,id:e.id,text:e.textContent.trim(),onclick:e.getAttribute('onclick')})).slice(0,20)""")
+            result['phone_tab_test'] = 'not_tested'
+            try:
+                field = prepare_search(page, '手机号')
+                result['phone_tab_test'] = 'passed'
+            except AccessBlocked:
+                result['phone_tab_test'] = 'challenge_stop'
+            except Exception as exc:
+                result['phone_tab_test'] = 'failed'
+                result['tab_error_type'] = type(exc).__name__
             result['inputs'] = page.locator('input').evaluate_all("""els => els.map(e => ({
                 id:e.id,type:e.type,name:e.name,placeholder:e.placeholder,visible:!!e.getClientRects().length}))""")
             result['tabs'] = page.locator('label,a,button,[role="tab"]').evaluate_all("""els => els.filter(e =>

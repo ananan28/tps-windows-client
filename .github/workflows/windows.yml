@@ -31,12 +31,6 @@ jobs:
           if (Test-Path $payload) { throw 'Unexpected bundled browser payload' }
       - name: Unit tests
         run: python -m unittest discover -s tests -v
-      - name: One live homepage access check
-        run: python live_access_check.py
-      - uses: actions/upload-artifact@v4
-        with:
-          name: live-homepage-access-evidence
-          path: live-access-result.json
       - name: Build portable Windows client
         run: python -m PyInstaller --noconfirm --clean --onedir --windowed --name TPSWindowsClient --collect-all playwright app.py
       - name: Smoke test actual packaged executable offline
@@ -64,18 +58,18 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: security-evidence-0.1.6
+          name: security-evidence-0.1.7
           path: security-evidence/
       - uses: actions/upload-artifact@v4
         with:
-          name: TPSWindowsClient-0.1.6-Windows-x64
+          name: TPSWindowsClient-0.1.7-Windows-x64
           path: dist/TPSWindowsClient/
           include-hidden-files: true
           retention-days: 14
       - name: Download uploaded program for round-trip verification
         uses: actions/download-artifact@v4
         with:
-          name: TPSWindowsClient-0.1.6-Windows-x64
+          name: TPSWindowsClient-0.1.7-Windows-x64
           path: downloaded-client
       - name: Verify actual downloaded program and browser
         shell: pwsh
