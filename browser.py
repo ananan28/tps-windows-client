@@ -78,19 +78,41 @@ def prepare_search(page, kind):
     phone = kind == '手机号'
     label = 'Phone' if phone else 'Email'
     pattern = re.compile(r'^\s*' + label + r'\s*$', re.I)
-    tabs = page.locator(f'#searchType{label}-d, #searchType{label}-m').or_(
+    native_tabs = page.locator(f'#searchType{label}-d, #searchType{label}-m')
+    fallback_tabs = (
         page.locator('label, a, button, [role="tab"]').filter(has_text=pattern)).or_(
         page.get_by_text(pattern))
-    event('tab_wait', 'phone' if phone else 'email')
-    tab = wait_visible(page, tabs)
-    tab.click()
-    event('tab_ready', 'ok')
     selectors = ('#id-d-ph, #id-m-ph, input[type="tel"], input[name*="phone" i], input[name="ph"], input[placeholder*="phone" i]:not([placeholder*="name" i]):not([placeholder*="address" i])' if phone
                  else '#id-d-em, #id-d-email, #id-m-email, input[type="email"], input[name*="email" i]')
+    event('tab_wait', 'phone' if phone else 'email')
     event('field_wait', 'start')
-    field = wait_visible(page, page.locator(selectors))
-    event('field_ready', 'ok')
-    return field
+    deadline = time.monotonic() + 30
+    next_click = 0
+    attempts = 0
+    while time.monotonic() < deadline:
+        check_access(page)
+        field = first_visible(page.locator(selectors))
+        if field is not None and field.is_enabled():
+            # Only an actual displayed Phone/Email field proves the tab worked.
+            event('tab_ready', 'ok')
+            event('field_ready', 'ok')
+            return field
+        tab = first_visible(native_tabs)
+        if tab is None:
+            tab = first_visible(fallback_tabs)
+        if tab is not None and tab.is_enabled() and time.monotonic() >= next_click:
+            # A visible tab can precede its JavaScript click listener. Reapply
+            # only the tab selection until it takes effect; never submit here.
+            selected = 'search-type-selected' in (tab.get_attribute('class') or '')
+            if not selected:
+                attempts += 1
+                event('tab_retry', 'start', count=attempts)
+                tab.click(timeout=3000)
+            next_click = time.monotonic() + 1
+        page.wait_for_timeout(150)
+    check_access(page)
+    event('control_timeout', 'failed', count=attempts)
+    raise ValueError(f'{label} 标签切换未生效或输入框未显示；查询未提交。请查看运行日志，不能将此状态当作无结果。')
 
 
 def submit_search(page, kind, value):

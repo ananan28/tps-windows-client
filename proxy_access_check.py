@@ -33,6 +33,9 @@ with sync_playwright() as p:
             result['phone_tab_test'] = 'not_tested'
             try:
                 field = prepare_search(page, '手机号')
+                assert field.is_visible() and field.is_enabled()
+                assert (field.get_attribute('name') or '').lower() != 'name'
+                result['phone_field'] = {'id':field.get_attribute('id'), 'type':field.get_attribute('type'), 'name':field.get_attribute('name'), 'visible':True}
                 result['phone_tab_test'] = 'passed'
             except AccessBlocked:
                 result['phone_tab_test'] = 'challenge_stop'
@@ -60,3 +63,4 @@ with sync_playwright() as p:
         browser.close()
 Path('live-access-result.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
 print('LIVE_ACCESS_RESULT=' + json.dumps(result, ensure_ascii=False))
+

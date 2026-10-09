@@ -41,10 +41,14 @@ def self_test():
             row = extract(page.evaluate(SNAPSHOT_JS))
             assert row['name'] == 'Test Person'
             assert row['phones'] == '2025550123'
-            fixture = '''<form action="/name-result"><input placeholder="Enter name, phone or address" name="Name"></form><label for="phone-tab"> Phone </label><input id="phone-tab" type="radio"
-                onchange="setTimeout(()=>document.querySelector('#phone-form').style.display='block',800)">
+            fixture = '''<form action="/name-result"><input placeholder="Enter name, phone or address" name="Name"></form>
+                <span id="searchTypePhone-d" class="search-type"><span> Phone </span></span>
                 <form id="phone-form" style="display:none" action="/resultphone"><input type="text" placeholder="Enter phone number" name="q">
-                <button type="submit">Search</button></form>'''
+                <button type="submit">Search</button></form>
+                <script>setTimeout(()=>document.querySelector('#searchTypePhone-d').addEventListener('click',()=>{
+                  document.querySelector('#searchTypePhone-d').classList.add('search-type-selected');
+                  setTimeout(()=>document.querySelector('#phone-form').style.display='block',800);
+                }),1200);</script>'''
             page.unroute('https://www.truepeoplesearch.com/**')
             page.route('https://www.truepeoplesearch.com/**', lambda route: route.fulfill(
                 content_type='text/html', body=fixture if route.request.url.endswith('/') else 'This IP has been rate limited'))
@@ -98,7 +102,7 @@ def self_test():
     assert '2025550123' not in log_text and 'Test Person' not in log_text
     Path('self-test-result.json').write_text(json.dumps({
         'version': VERSION, 'offline_browser': 'passed', 'xlsx': 'passed',
-        'tkinter': 'passed', 'installed_chrome_persistent_session': 'passed', 'query_tab_submit_and_rate_limit': 'passed', 'runtime_log': 'passed', 'passive_challenge_diagnostics': 'passed', 'popup_kept_open': 'passed', 'live_site': 'not_tested'}), encoding='utf-8')
+        'tkinter': 'passed', 'installed_chrome_persistent_session': 'passed', 'query_tab_submit_and_rate_limit': 'passed', 'delayed_tab_listener': 'passed', 'runtime_log': 'passed', 'passive_challenge_diagnostics': 'passed', 'popup_kept_open': 'passed', 'live_site': 'not_tested'}), encoding='utf-8')
 
 
 def main():
