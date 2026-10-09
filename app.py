@@ -28,7 +28,8 @@ def self_test():
     with sync_playwright() as p:
         b = p.chromium.launch(headless=True, channel='chrome')
         try:
-            page = b.new_page()
+            test_context = b.new_context()
+            page = test_context.new_page()
             from browser_diagnostics import attach_context_diagnostics
             attach_context_diagnostics(page.context)
             popup = page.context.new_page()
