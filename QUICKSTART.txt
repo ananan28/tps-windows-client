@@ -1,5 +1,7 @@
-TPS Windows Client 0.1.11 完整源码测试版
-安装 Python 3.12 和 Google Chrome；pip install -r requirements.txt。
+TPS Windows Client 0.1.12 完整源码测试版
+完整解压后安装 Python 3.12 和 Google Chrome，双击 start.bat。
+首次启动自动创建 .venv 并联网安装依赖；失败保留窗口显示原因。
+无需管理员权限，不下载 Chromium；不能在压缩包内直接启动。
 GUI：python app.py；标准离线 QA：python qa_test.py --self-test --headless --submit。
 独立查询入口：python crawler.py；固定 HTTP 代理使用 TPS_HTTP_PROXY 环境变量。
 保留自动查询。验证暂停，人工处理后继续；不自动操作验证码，不重复提交未知状态任务。

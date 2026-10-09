@@ -2,7 +2,7 @@ name: Windows test build
 on:
   push:
     branches: [main]
-    paths: ['**.py', 'requirements.txt', '.github/workflows/windows.yml']
+    paths: ['**.py', 'start.bat', 'requirements.txt', '.github/workflows/windows.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -29,6 +29,13 @@ jobs:
           $package = python -c "import pathlib, playwright; print(pathlib.Path(playwright.__file__).parent)"
           $payload = Join-Path $package 'driver/package/.local-browsers'
           if (Test-Path $payload) { throw 'Unexpected bundled browser payload' }
+      - name: Windows double-click launcher environment check
+        shell: cmd
+        run: |
+          call start.bat --check
+          if errorlevel 1 exit /b 1
+          call start.bat --check
+          if errorlevel 1 exit /b 1
       - name: Unit tests
         run: python -m unittest discover -s tests -v
       - name: Standard QA offline success and failure evidence
@@ -68,18 +75,18 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: security-evidence-0.1.11
+          name: security-evidence-0.1.12
           path: security-evidence/
       - uses: actions/upload-artifact@v4
         with:
-          name: TPSWindowsClient-0.1.11-Windows-x64
+          name: TPSWindowsClient-0.1.12-Windows-x64
           path: dist/TPSWindowsClient/
           include-hidden-files: true
           retention-days: 14
       - name: Download uploaded program for round-trip verification
         uses: actions/download-artifact@v4
         with:
-          name: TPSWindowsClient-0.1.11-Windows-x64
+          name: TPSWindowsClient-0.1.12-Windows-x64
           path: downloaded-client
       - name: Verify actual downloaded program and browser
         shell: pwsh

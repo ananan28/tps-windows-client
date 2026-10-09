@@ -1,8 +1,16 @@
-# TPS Windows Client / 标准 Playwright QA 源码 0.1.11
+# TPS Windows Client / 标准 Playwright QA 源码 0.1.12
 
 完整工程包含现有 Windows GUI、独立查询入口 crawler.py、标准测试入口 qa_test.py、依赖和测试。不包含浏览器二进制、用户代理凭据、个人查询结果或日志。使用 Python 3.12 和本机 Google Chrome。
 
-## 安装
+## 双击启动（Windows）
+
+先完整解压 ZIP，安装 Python 3.12（勾选 Python Launcher 和 Tcl/Tk）及 Google Chrome，然后双击 `start.bat`。无需管理员权限。
+
+脚本在工程目录创建 `.venv`，首次联网安装 requirements.txt 中的依赖并打开 GUI。以后直接启动；依赖文件变更或模块缺失时重新安装。安装失败下次可重试。不会下载或打包 Chromium。启动失败会保留窗口显示原因；不要在 ZIP 预览中直接运行。
+
+`start.bat --check` 仅检查和准备环境，不打开 GUI，失败返回非零退出码且不暂停，适合 CI。启动安装步骤显示在控制台；软件运行日志仍由 GUI 的日志按钮查看。
+
+## 手动安装
 
 ```powershell
 py -3.12 -m venv .venv
