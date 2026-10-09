@@ -9,6 +9,7 @@ if getattr(sys, 'frozen', False):
 
 from core import VERSION, proxy_config, query_value, export_xlsx
 from browser import BrowserWorker
+from runtime_log import event, setup_logging, log_dir
 
 
 def data_dir():
@@ -23,6 +24,7 @@ def self_test():
     from browser import SNAPSHOT_JS, submit_search, open_context, AccessBlocked
     from core import extract
     import tempfile
+    setup_logging()
     with sync_playwright() as p:
         b = p.chromium.launch(headless=True, channel='chrome')
         try:
@@ -78,9 +80,14 @@ def self_test():
     # Verify that the packaged Tcl/Tk runtime can create a window on Windows.
     import tkinter as tk
     root = tk.Tk(); root.withdraw(); root.update(); root.destroy()
+    log_text = (log_dir() / 'runtime.log').read_text(encoding='utf-8')
+    log_rows = [json.loads(line) for line in log_text.splitlines()]
+    assert any(r['event'] == 'input_fill' for r in log_rows)
+    assert any(r['event'] == 'access_pause' for r in log_rows)
+    assert '2025550123' not in log_text and 'Test Person' not in log_text
     Path('self-test-result.json').write_text(json.dumps({
         'version': VERSION, 'offline_browser': 'passed', 'xlsx': 'passed',
-        'tkinter': 'passed', 'installed_chrome_persistent_session': 'passed', 'query_tab_submit_and_rate_limit': 'passed', 'live_site': 'not_tested'}), encoding='utf-8')
+        'tkinter': 'passed', 'installed_chrome_persistent_session': 'passed', 'query_tab_submit_and_rate_limit': 'passed', 'runtime_log': 'passed', 'live_site': 'not_tested'}), encoding='utf-8')
 
 
 def main():
@@ -96,6 +103,12 @@ def main():
             self.busy = False
             self.last_query = ''
             self.closing = False
+            self.log_window = None
+            self.log_text = None
+            self.log_content = None
+            setup_logging()
+            event('app_start', 'ok')
+            root.report_callback_exception = self.callback_error
             self.cache = data_dir() / 'results.json'
             self.proxy = tk.StringVar()
             self.query = tk.StringVar()
@@ -137,6 +150,7 @@ def main():
             bottom = ttk.Frame(frame); bottom.pack(side='bottom', fill='x', before=self.table)
             ttk.Button(bottom, text='4. 导出 Excel', command=self.export).pack(side='left')
             ttk.Button(bottom, text='清空本机结果', command=self.clear).pack(side='left', padx=8)
+            ttk.Button(bottom, text='运行日志', command=self.show_logs).pack(side='left', padx=8)
             ttk.Label(frame, textvariable=self.status, wraplength=760).pack(side='bottom', fill='x', pady=(6,0), before=self.table)
             try:
                 cached = json.loads(self.cache.read_text(encoding='utf-8'))
@@ -148,6 +162,49 @@ def main():
             root.protocol('WM_DELETE_WINDOW', self.close)
             self.buttons()
             root.after(100, self.poll)
+
+        def callback_error(self, exc_type, exc, traceback):
+            event('unhandled_error', 'failed')
+            self.status.set('界面操作异常，请查看运行日志')
+            messagebox.showerror('界面错误', '界面操作异常；已记录安全错误事件，请提供运行日志。')
+
+        def show_logs(self):
+            if self.log_window is not None and self.log_window.winfo_exists():
+                self.log_window.lift(); return
+            from tkinter.scrolledtext import ScrolledText
+            self.log_window = tk.Toplevel(self.root)
+            self.log_window.title('运行日志（自动刷新）')
+            self.log_window.geometry('880x480')
+            ttk.Label(self.log_window, text='UTC 时间 · 日志只记录步骤，不包含查询资料、代理账号密码或网页内容').pack(anchor='w', padx=10, pady=6)
+            ttk.Label(self.log_window, text=str(log_dir()), wraplength=850).pack(anchor='w', padx=10)
+            ttk.Button(self.log_window, text='打开日志文件夹', command=self.open_log_folder).pack(anchor='w', padx=10, pady=6)
+            self.log_text = ScrolledText(self.log_window, wrap='none', state='disabled')
+            self.log_text.pack(fill='both', expand=True, padx=10, pady=6)
+            self.log_content = None
+            self.refresh_logs()
+
+        def open_log_folder(self):
+            try:
+                log_dir().mkdir(parents=True, exist_ok=True)
+                os.startfile(str(log_dir()))
+            except (OSError, AttributeError):
+                messagebox.showerror('日志目录', '无法打开目录；请复制窗口显示的路径。')
+
+        def refresh_logs(self):
+            if self.log_window is None or not self.log_window.winfo_exists(): return
+            try:
+                path = log_dir() / 'runtime.log'
+                with path.open('rb') as f:
+                    f.seek(max(0, path.stat().st_size - 128 * 1024))
+                    content = f.read().decode('utf-8', errors='replace')
+            except OSError:
+                content = '日志暂时无法读取，请检查目录写入权限。'
+            if content != self.log_content:
+                self.log_text.configure(state='normal')
+                self.log_text.delete('1.0', 'end'); self.log_text.insert('end', content)
+                self.log_text.configure(state='disabled'); self.log_text.see('end')
+                self.log_content = content
+            self.log_window.after(1000, self.refresh_logs)
 
         def insert(self, row):
             self.table.insert('', 'end', values=[row.get(k,'') for k in ('name','age','phones','emails')])
@@ -169,6 +226,7 @@ def main():
             if self.worker: return
             try: proxy = proxy_config(self.proxy.get())
             except ValueError as exc:
+                event('input_rejected', 'proxy')
                 messagebox.showerror('代理格式', str(exc)); return
             self.busy = True
             self.worker = BrowserWorker(proxy, self.events, 'chrome')
@@ -184,6 +242,7 @@ def main():
                 messagebox.showinfo('确认测试资料', '请先确认资料授权'); return
             try: value = query_value(self.kind.get(), self.query.get())
             except ValueError as exc:
+                event('input_rejected', 'search')
                 messagebox.showerror('查询资料', str(exc)); return
             self.last_query = value
             self.status.set('正在提交查询…')
@@ -196,6 +255,7 @@ def main():
 
         def stop(self):
             if self.worker:
+                event('stop_request', 'start')
                 self.worker.stop_event.set(); self.busy = True; self.buttons()
                 self.status.set('正在停止；当前网络操作超时后关闭浏览器…')
 
@@ -219,6 +279,7 @@ def main():
                     if kind == 'closed': self.worker = None; self.busy = False
                     if kind == 'row':
                         if not any(r.get('source_url') == value['source_url'] and r.get('query') == value['query'] for r in self.rows):
+                            event('result_saved', 'ok')
                             self.rows.append(value); self.insert(value)
                             try: self.persist()
                             except OSError: messagebox.showerror('缓存失败', '无法保存本机缓存，请立即导出 Excel')
@@ -233,8 +294,13 @@ def main():
                 messagebox.showinfo('导出', '还没有采集结果'); return
             path = filedialog.asksaveasfilename(defaultextension='.xlsx', initialfile='TPS-results.xlsx', filetypes=[('Excel','*.xlsx')])
             if path:
-                try: export_xlsx(self.rows, path); self.status.set(f'已导出 {len(self.rows)} 条结果')
-                except OSError: messagebox.showerror('导出失败', '请关闭正在打开的 Excel，或更换保存目录')
+                try:
+                    export_xlsx(self.rows, path)
+                    event('export_done', 'ok', count=len(self.rows))
+                    self.status.set(f'已导出 {len(self.rows)} 条结果')
+                except OSError:
+                    event('export_error', 'failed')
+                    messagebox.showerror('导出失败', '请关闭正在打开的 Excel，或更换保存目录')
 
         def clear(self):
             if messagebox.askyesno('清空结果', '确认删除本机缓存？已导出的 Excel 不会删除。'):
@@ -246,6 +312,7 @@ def main():
                 except OSError: messagebox.showerror('清空失败','缓存文件无法删除')
 
         def close(self):
+            event('app_close', 'start')
             self.closing = True
             self.stop()
             if not self.worker: self.root.destroy()
@@ -256,3 +323,4 @@ def main():
 if __name__ == '__main__':
     if '--self-test' in sys.argv: self_test()
     else: main()
+

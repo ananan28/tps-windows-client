@@ -4,7 +4,7 @@ import re
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
-VERSION = '0.1.7'
+VERSION = '0.1.8'
 HOME = 'https://www.truepeoplesearch.com/'
 
 
@@ -137,3 +137,4 @@ def export_xlsx(rows, path):
         os.replace(tmp, dest)
     finally:
         if os.path.exists(tmp): os.unlink(tmp)
+

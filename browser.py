@@ -4,6 +4,8 @@ import threading
 import re
 import os
 import hashlib
+import time
+from runtime_log import event
 from pathlib import Path
 from core import HOME, blocked, extract, site_url
 
@@ -33,11 +35,13 @@ def check_access(page):
     text = page.locator('body').inner_text(timeout=3000)
     low = text.lower()
     if 'rate limited' in low:
+        event('access_pause', 'rate_limit')
         raise AccessBlocked('网站拒绝当前请求（限流），请停止重试；这不是无结果。')
     challenge = blocked(text, page.url) or any(x in low for x in (
         'just a moment', 'checking your browser', 'automatic submission failed',
         'verification failed', '验证失败'))
     if challenge:
+        event('access_pause', 'challenge')
         raise AccessBlocked('网站验证尚未完成，查询已暂停；人工完成后点“继续查询”。')
 
 
@@ -59,6 +63,7 @@ def wait_visible(page, locator, timeout=15000):
             return item
         page.wait_for_timeout(150)
     check_access(page)
+    event('control_timeout', 'failed')
     raise ValueError('等待查询控件就绪超时；查询未提交。可能是脚本未加载或网页结构改变。')
 
 
@@ -72,38 +77,47 @@ def prepare_search(page, kind):
     tabs = page.locator(f'#searchType{label}-d, #searchType{label}-m').or_(
         page.locator('label, a, button, [role="tab"]').filter(has_text=pattern)).or_(
         page.get_by_text(pattern))
+    event('tab_wait', 'phone' if phone else 'email')
     tab = wait_visible(page, tabs)
     tab.click()
+    event('tab_ready', 'ok')
     selectors = ('#id-d-ph, #id-m-ph, input[type="tel"], input[name*="phone" i], input[name="ph"], input[placeholder*="phone" i]' if phone
                  else '#id-d-em, #id-d-email, #id-m-email, input[type="email"], input[name*="email" i]')
+    event('field_wait', 'start')
     field = wait_visible(page, page.locator(selectors))
+    event('field_ready', 'ok')
     return field
 
 
 def submit_search(page, kind, value):
     field = prepare_search(page, kind)
     field.fill(value)
+    event('input_fill', 'ok')
     form = field.locator('xpath=ancestor::form[1]')
     phone = kind == '手机号'
     submit = first_visible(page.locator('#btnSubmit-d-ph, #btnSubmit-m-ph' if phone else '#btnSubmit-d-email, #btnSubmit-m-email'))
     if submit is None:
         submit = first_visible(form.locator('button[type="submit"], input[type="submit"]'))
     before = page.url
+    started = time.monotonic()
+    event('submit_click', 'start')
     if submit is not None:
         submit.click()
     else:
         field.press('Enter')
+    event('navigation_wait', 'start')
     try:
-        import time
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
             page.wait_for_timeout(150)
             check_access(page)
             if page.url != before:
+                event('navigation_done', 'ok', elapsed_ms=int((time.monotonic()-started)*1000))
                 return
     except AccessBlocked as exc:
         exc.submitted = True
         raise
+    event('navigation_timeout', 'failed', submitted=True)
     raise ValueError('提交后未确认跳转，请检查浏览器提示；软件不会自动重复提交。')
 
 
@@ -111,19 +125,27 @@ def error_message(exc, stage):
     """Show useful categories without exposing credentials from exception text."""
     text = str(exc).lower()
     if 'executable doesn' in text or 'enoent' in text or 'winerror 2' in text:
+        outcome = 'browser_missing'
         reason = '未找到 Google Chrome，请先安装 Chrome；轻量版不包含浏览器'
     elif 'err_invalid_auth_credentials' in text or '407' in text:
+        outcome = 'proxy_auth'
         reason = 'HTTP 代理认证失败：请检查账号和密码'
     elif 'err_proxy_connection_failed' in text or 'err_tunnel_connection_failed' in text:
+        outcome = 'proxy_connection'
         reason = 'HTTP 代理连接失败：检查地址、端口及服务是否可用'
     elif 'timeout' in text:
+        outcome = 'timeout'
         reason = '连接超时：请检查代理网络，或在浏览器点击刷新'
     elif 'err_name_not_resolved' in text:
+        outcome = 'dns'
         reason = '域名解析失败：请检查网络和代理'
     elif 'targetclosed' in type(exc).__name__.lower() or 'target closed' in text:
+        outcome = 'browser_closed'
         reason = '浏览器已关闭或被系统阻止'
     else:
+        outcome = 'unknown'
         reason = '操作失败，请检查完整解压、系统防护和代理连接'
+    event('operation_error', outcome)
     return f'{stage}：{reason}（{type(exc).__name__}）'
 
 SNAPSHOT_JS = r'''() => {
@@ -158,6 +180,7 @@ class BrowserWorker(threading.Thread):
 
     def run(self):
         failed = False
+        event('browser_start', 'proxy' if self.proxy else 'direct')
         try:
             from playwright.sync_api import sync_playwright
             with sync_playwright() as p:
@@ -171,24 +194,31 @@ class BrowserWorker(threading.Thread):
                     # Keep the window alive even when the proxy/homepage request fails.
                     self.emit('status', '浏览器已启动，正在访问网站…')
                     try:
-                        page.goto(HOME, wait_until='domcontentloaded')
+                        event('homepage_load', 'start')
+                        response = page.goto(HOME, wait_until='domcontentloaded')
+                        event('homepage_load', 'ok', http_status=response.status if response else None)
                         self.emit('status', '浏览器已打开。验证请人工完成，然后查询。')
                     except Exception as exc:
+                        event('homepage_load', 'failed')
                         self.emit('warning', error_message(exc, '网站加载失败'))
+                    event('browser_ready', 'ok')
                     self.emit('ready', '浏览器已就绪；验证未完成时查询会暂停')
                     while not self.stop_event.is_set() and not page.is_closed():
                         try: command, data = self.commands.get_nowait()
                         except queue.Empty:
                             page.wait_for_timeout(150)
                             continue
+                        event('command_start', command)
                         try:
                             if command == 'home':
                                 page.goto(HOME, wait_until='domcontentloaded')
                                 self.emit('status', '已返回首页')
                             elif command == 'resume':
+                                event('resume_request', 'start')
                                 if self.pending_search is None:
                                     raise ValueError('没有暂停的查询')
                                 data, submitted = self.pending_search
+                                event('resume_request', 'already_submitted' if submitted else 'not_submitted', submitted=submitted)
                                 check_access(page)
                                 if not submitted:
                                     submit_search(page, *data)
@@ -207,17 +237,24 @@ class BrowserWorker(threading.Thread):
                         except AccessBlocked as exc:
                             if command in ('search', 'resume'):
                                 self.pending_search = (data, exc.submitted or (command == 'resume' and submitted))
+                            event('operation_error', 'challenge', submitted=exc.submitted)
                             self.emit('warning', str(exc))
                         except ValueError as exc:
+                            event('operation_error', 'failed')
                             self.emit('warning', str(exc))
                         except Exception as exc:
+                            event('operation_error', 'failed')
                             self.emit('warning', error_message(exc, '浏览器操作失败'))
                         finally:
+                            event('command_done', command)
                             self.emit('idle', '')
                 finally:
                     context.close()
         except Exception as exc:
             failed = True
+            event('operation_error', 'failed')
             self.emit('error', error_message(exc, '浏览器启动失败'))
         finally:
+            event('browser_close', 'failed' if failed else 'ok')
             self.emit('closed', '' if failed else '浏览器已停止；已采集结果仍可导出')
+
