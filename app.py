@@ -40,9 +40,9 @@ def self_test():
             row = extract(page.evaluate(SNAPSHOT_JS))
             assert row['name'] == 'Test Person'
             assert row['phones'] == '2025550123'
-            fixture = '''<label for="phone-tab"> Phone </label><input id="phone-tab" type="radio"
-                onchange="setTimeout(()=>document.querySelector('form').style.display='block',800)">
-                <form style="display:none" action="/resultphone"><input type="text" placeholder="Enter phone number" name="q">
+            fixture = '''<form action="/name-result"><input placeholder="Enter name, phone or address" name="Name"></form><label for="phone-tab"> Phone </label><input id="phone-tab" type="radio"
+                onchange="setTimeout(()=>document.querySelector('#phone-form').style.display='block',800)">
+                <form id="phone-form" style="display:none" action="/resultphone"><input type="text" placeholder="Enter phone number" name="q">
                 <button type="submit">Search</button></form>'''
             page.unroute('https://www.truepeoplesearch.com/**')
             page.route('https://www.truepeoplesearch.com/**', lambda route: route.fulfill(

@@ -85,7 +85,7 @@ def prepare_search(page, kind):
     tab = wait_visible(page, tabs)
     tab.click()
     event('tab_ready', 'ok')
-    selectors = ('#id-d-ph, #id-m-ph, input[type="tel"], input[name*="phone" i], input[name="ph"], input[placeholder*="phone" i]' if phone
+    selectors = ('#id-d-ph, #id-m-ph, input[type="tel"], input[name*="phone" i], input[name="ph"], input[placeholder*="phone" i]:not([placeholder*="name" i]):not([placeholder*="address" i])' if phone
                  else '#id-d-em, #id-d-email, #id-m-email, input[type="email"], input[name*="email" i]')
     event('field_wait', 'start')
     field = wait_visible(page, page.locator(selectors))
