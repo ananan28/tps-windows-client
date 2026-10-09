@@ -2,10 +2,13 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from runtime_log import event, setup_logging
+from runtime_log import event, setup_logging, close_logging
 
 
 class RuntimeLogTests(unittest.TestCase):
+    def tearDown(self):
+        close_logging()
+
     def test_only_safe_fields_are_recorded(self):
         with tempfile.TemporaryDirectory() as d:
             logger = setup_logging(d)

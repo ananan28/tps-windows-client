@@ -58,18 +58,18 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: security-evidence-0.1.8
+          name: security-evidence-0.1.9
           path: security-evidence/
       - uses: actions/upload-artifact@v4
         with:
-          name: TPSWindowsClient-0.1.8-Windows-x64
+          name: TPSWindowsClient-0.1.9-Windows-x64
           path: dist/TPSWindowsClient/
           include-hidden-files: true
           retention-days: 14
       - name: Download uploaded program for round-trip verification
         uses: actions/download-artifact@v4
         with:
-          name: TPSWindowsClient-0.1.8-Windows-x64
+          name: TPSWindowsClient-0.1.9-Windows-x64
           path: downloaded-client
       - name: Verify actual downloaded program and browser
         shell: pwsh

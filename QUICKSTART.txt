@@ -1,4 +1,4 @@
-TPS Windows Client 0.1.8 Windows 测试版
+TPS Windows Client 0.1.9 Windows 测试版
 需要本机已安装 Chrome。完整解压后运行 TPSWindowsClient.exe。
 填写代理和授权测试号码/邮箱，勾选授权；默认打开后自动查询已填写内容。
 等待控件就绪后再提交；遇验证暂停，人工完成后点“继续查询”。不会重复提交已经发送的查询。
@@ -8,3 +8,8 @@ TPS Windows Client 0.1.8 Windows 测试版
 日志不会解决网站验证；出现问题时可提供 runtime.log 排查。日志目录不可写时窗口会显示读取失败。
 限流属于访问拒绝，不代表没有结果。网站持续拒绝时应停止，不循环刷新。
 测试通过不代表真实网站验证必定通过；本版本不含 stealth 或验证码破解。
+
+0.1.9：不再自动关闭新窗口或网页对话框。新增验证资源失败、官网文档 HTTP 状态和 Turnstile 数字错误码日志（仅在浏览器产生对应 console 错误时记录）。不会操作或破解验证。
+验证失败：保持同一网络和代理，点验证框“故障排除”记录错误码；不要循环提交。取消“打开后自动查询”可先检查首页和人工验证。
+若普通 Chrome 在同一代理下正常，而软件仍失败，则可能是自动化环境兼容性问题；Cloudflare 不支持生产验证中的 Playwright 等自动化浏览器。不能保证手动验证一定通过。
+Cloudflare 参考：https://developers.cloudflare.com/cloudflare-challenges/reference/supported-browsers/

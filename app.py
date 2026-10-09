@@ -29,6 +29,11 @@ def self_test():
         b = p.chromium.launch(headless=True, channel='chrome')
         try:
             page = b.new_page()
+            from browser_diagnostics import attach_context_diagnostics
+            attach_context_diagnostics(page.context)
+            popup = page.context.new_page()
+            assert not popup.is_closed()
+            popup.close()
             page.route('https://www.truepeoplesearch.com/**', lambda route: route.fulfill(
                 content_type='text/html', body='<div id="personDetails"><h1>Test Person</h1><a href="tel:2025550123">Test</a></div>'))
             page.goto('https://www.truepeoplesearch.com/test-detail')
@@ -60,6 +65,9 @@ def self_test():
             except AccessBlocked as exc:
                 assert not exc.submitted
             assert page.url == 'https://www.truepeoplesearch.com/'
+            page.route('https://challenges.cloudflare.com/**', lambda route: route.fulfill(
+                status=503, body='Offline fixture', headers={'Access-Control-Allow-Origin': '*'}))
+            page.evaluate("async () => { try { await fetch('https://challenges.cloudflare.com/offline-test'); } catch {} }")
             with tempfile.TemporaryDirectory() as d:
                 dest = Path(d) / 'smoke.xlsx'
                 export_xlsx([row], dest)
@@ -84,10 +92,12 @@ def self_test():
     log_rows = [json.loads(line) for line in log_text.splitlines()]
     assert any(r['event'] == 'input_fill' for r in log_rows)
     assert any(r['event'] == 'access_pause' for r in log_rows)
+    assert any(r['event'] == 'popup_open' for r in log_rows)
+    assert any(r['event'] == 'resource_http' and r['http_status'] == 503 for r in log_rows)
     assert '2025550123' not in log_text and 'Test Person' not in log_text
     Path('self-test-result.json').write_text(json.dumps({
         'version': VERSION, 'offline_browser': 'passed', 'xlsx': 'passed',
-        'tkinter': 'passed', 'installed_chrome_persistent_session': 'passed', 'query_tab_submit_and_rate_limit': 'passed', 'runtime_log': 'passed', 'live_site': 'not_tested'}), encoding='utf-8')
+        'tkinter': 'passed', 'installed_chrome_persistent_session': 'passed', 'query_tab_submit_and_rate_limit': 'passed', 'runtime_log': 'passed', 'passive_challenge_diagnostics': 'passed', 'popup_kept_open': 'passed', 'live_site': 'not_tested'}), encoding='utf-8')
 
 
 def main():

@@ -6,6 +6,7 @@ import os
 import hashlib
 import time
 from runtime_log import event
+from browser_diagnostics import attach_context_diagnostics
 from pathlib import Path
 from core import HOME, blocked, extract, site_url
 
@@ -42,6 +43,9 @@ def check_access(page):
         'verification failed', '验证失败'))
     if challenge:
         event('access_pause', 'challenge')
+        if any(x in low for x in ('automatic submission failed', 'verification failed', '验证失败')):
+            event('challenge_failure', 'failed')
+            raise AccessBlocked('验证组件报错，查询已暂停；请点验证框的“故障排除”查看错误码，并提供运行日志。不要反复提交。')
         raise AccessBlocked('网站验证尚未完成，查询已暂停；人工完成后点“继续查询”。')
 
 
@@ -189,8 +193,7 @@ class BrowserWorker(threading.Thread):
                     page = context.pages[0] if context.pages else context.new_page()
                     page.set_default_timeout(7000)
                     page.set_default_navigation_timeout(15000)
-                    context.on('page', lambda popup: popup.close())
-                    page.on('dialog', lambda d: d.dismiss())
+                    attach_context_diagnostics(context)
                     # Keep the window alive even when the proxy/homepage request fails.
                     self.emit('status', '浏览器已启动，正在访问网站…')
                     try:
