@@ -68,3 +68,4 @@ def attach_context_diagnostics(context):
         event('popup_open', 'manual')
         attach_diagnostics(page)
     context.on('page', new_page)
+

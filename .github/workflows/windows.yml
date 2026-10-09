@@ -31,6 +31,15 @@ jobs:
           if (Test-Path $payload) { throw 'Unexpected bundled browser payload' }
       - name: Unit tests
         run: python -m unittest discover -s tests -v
+      - name: Standard QA offline success and failure evidence
+        shell: pwsh
+        run: |
+          python qa_test.py --self-test --headless --submit --output qa-success
+          if ($LASTEXITCODE -ne 0) { throw 'QA success path failed' }
+          python qa_test.py --self-test --headless --timeout 1000 --output qa-failure
+          if ($LASTEXITCODE -ne 1) { throw 'QA timeout was not detected' }
+          if (-not (Test-Path qa-failure/failure.png)) { throw 'QA failure screenshot missing' }
+          if (-not (Test-Path qa-failure/failure.html)) { throw 'QA failure DOM missing' }
       - name: Build portable Windows client
         run: python -m PyInstaller --noconfirm --clean --onedir --windowed --name TPSWindowsClient --collect-all playwright app.py
       - name: Smoke test actual packaged executable offline
@@ -58,18 +67,18 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: security-evidence-0.1.10
+          name: security-evidence-0.1.11
           path: security-evidence/
       - uses: actions/upload-artifact@v4
         with:
-          name: TPSWindowsClient-0.1.10-Windows-x64
+          name: TPSWindowsClient-0.1.11-Windows-x64
           path: dist/TPSWindowsClient/
           include-hidden-files: true
           retention-days: 14
       - name: Download uploaded program for round-trip verification
         uses: actions/download-artifact@v4
         with:
-          name: TPSWindowsClient-0.1.10-Windows-x64
+          name: TPSWindowsClient-0.1.11-Windows-x64
           path: downloaded-client
       - name: Verify actual downloaded program and browser
         shell: pwsh
@@ -85,3 +94,4 @@ jobs:
           name: offline-smoke-evidence
           path: self-test-result.json
           retention-days: 14
+

@@ -1,51 +1,72 @@
-# TPS Windows Client 0.1.1
+# TPS Windows Client / 标准 Playwright QA 源码 0.1.11
 
-独立实现的 Windows x64 图形客户端。HTTP 认证代理、单线程可见 Chromium、单条手机号/邮箱查询、人工选择匹配详情、详情采集和 XLSX 导出。未复制参考仓库源码。
+完整工程包含现有 Windows GUI、独立查询入口 crawler.py、标准测试入口 qa_test.py、依赖和测试。不包含浏览器二进制、用户代理凭据、个人查询结果或日志。使用 Python 3.12 和本机 Google Chrome。
 
-## 下载与使用
-
-打开本仓库 Actions 的 `Windows test build`，选择成功运行，在 Artifacts 下载 `TPSWindowsClient-0.1.1-Windows-x64`。解压整个目录，运行 `TPSWindowsClient.exe`。包含运行时和 Chromium，无需安装 Python；不能只移动 EXE。
-
-1. 填写自己的 HTTP 代理：`host:port:user:password`；留空直连。凭据不落盘。
-2. 打开浏览器，网站验证请人工完成。
-3. 在浏览器选择 Phone/Email 标签，软件填单条授权测试资料并查询。表单不兼容时可在浏览器手动查询。
-4. 在浏览器选择正确人员的 View Details，点击软件的“采集当前详情”。
-5. 核对数据并导出 Excel。停止关闭浏览器，缓存不清空；重新打开程序可恢复结果。
-
-## 测试范围与限制
-
-- 本地核心测试：代理验证、号码规范化、站点边界、验证页拒绝采集、JSON-LD 提取和 Excel 公式注入防护。
-- Windows Actions：运行核心测试，构建包含浏览器的便携包，再实际启动打包 EXE 访问离线虚构详情、导出 XLSX 并验证 Tk 窗口。
-- 不把离线构建通过描述为真实网站成功。用户已确认自己的 HTTP 代理可以手动访问详情页；本客户端的真实网站查询和字段准确性尚需用户 Windows 验收。
-- 当前是单条查询/详情采集测试版，不是完整批量采集器。没有自动匹配人员、IP 轮换或验证码破解功能；姓名/地址字段随网站结构变化仍可能需要调整。
-- 第一版只在识别到详情容器时采集；没有姓名、验证页或结果列表均拒绝保存。XLSX 来源 URL 和采集时间用于人工核对。
-- 程序包未签名。浏览器运行占用本机资源；退出软件会关闭其浏览器。网络操作的停止最多等待当前操作超时。
-
-## 本机数据
-
-结果缓存：`%LOCALAPPDATA%\TPSWindowsClient\results.json`，包含采集资料，可在界面清空。仅保存在本机，无远程上传。代理凭据只在内存，不保存到 Git、缓存或日志。公开仓库严禁提交实际用户资料和凭据。
-
-## 源码开发
-
-Python 3.12：
+## 安装
 
 ```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-python -m playwright install chromium
-python -m unittest discover -s tests -v
-python app.py
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-浏览器 API 始终在独立单线程运行，通过队列与 Tk 主线程通信。停止不会清空结果；重复的相同查询/详情 URL 不重复添加。Excel 写入先保存临时文件再替换目标。
+默认使用已安装 Chrome，无需下载 Chromium。如果自行选择 `--browser chromium`，先用同一 Python 执行 `-m playwright install chromium`。
 
-## 维护归属
+## 先运行标准 QA（不访问真实网站）
 
-用户指定由 2026-10-03 当前创建对话维护。其他 GPT 窗口未经用户转交请勿修改、推送、合并或触发构建；见 `AGENTS.md`。此约定不构成 GitHub 权限锁。
+```powershell
+.\.venv\Scripts\python.exe qa_test.py --self-test --headless --submit
+```
 
-参考项目只用于此前可行性评估：https://github.com/qq1254870524/truepeoplesearch 。其许可证未明确，本项目没有引入其源码。
+本地 fixture 模拟：Phone 按钮先显示、约 1 秒后初始化并启用、点击后输入框延迟显示。使用虚构测试号码，所有网络由 route 拦截；测试不会操作生产环境验证码。
 
-## 0.1.1 启动修复
+## 配置测试页面
 
-首页加载超时或代理错误时保留浏览器窗口；启动失败弹出明确错误，不再被停止状态覆盖。诊断只保存错误类别，不保存代理凭据；位置 `%LOCALAPPDATA%\TPSWindowsClient\diagnostics.txt`。
+```powershell
+.\.venv\Scripts\python.exe qa_test.py --url https://your-test-site.example/ --tab-selector "#phone-tab" --input-selector "input[type=tel]"
+```
+
+默认只切换标签、填入虚构值并断言，不提交。确实需要提交时添加 `--submit --submit-selector "button[type=submit]" --success-selector "#success"`；成功断言应使用你测试页面的真实元素。通过 `--ready-selector` 指定自己应用的初始化标志。不要把个人查询值放进命令行；`--value` 只用于合成测试数据。
+
+等待逻辑：共享 20 秒控件期限；expect 检查 visible/enabled/editable；trial click 检查稳定和事件可达；点击/填充使用 Playwright 自动等待。没有 time.sleep 或固定等待作为页面就绪判断。普通 Chrome 参数、独立 BrowserContext，不修改 User-Agent、TLS、Canvas、WebGL 或 webdriver。
+
+## 固定 HTTP 代理
+
+```powershell
+$env:TPS_HTTP_PROXY = 'example.test:8080:example_user:example_password'
+.\.venv\Scripts\python.exe qa_test.py --self-test --headless
+```
+
+支持 host:port、host:port:user:password 和 http://user:password@host:port。TLS 由正常 Chrome 完成，不做握手指纹伪造。代理不轮换，密码不写入日志。示例文件 `.env.example` 不会自动载入。GUI 仍在界面输入代理。
+
+## 启动原有客户端与独立查询入口
+
+```powershell
+.\.venv\Scripts\python.exe app.py
+.\.venv\Scripts\python.exe crawler.py
+```
+
+crawler.py 在内存中读取查询值并自动提交一次；GUI 保留授权确认、自动查询、人工验证暂停/继续、本机缓存与 Excel 导出。GUI 的控件准备最多三轮显式条件等待，只重选标签；提交后的未知状态不会重发。此版单线程，不包含批量查询、多开或 CSV 导出。
+
+## 故障与诊断
+
+标准 QA 返回码：0 通过，1 失败。默认 logs/qa/failure.json 记录阶段与错误类型；failure.png 为全页截图（输入框遮盖），failure.html 为去除输入值、链接、脚本的 DOM 结构。截图中的其他页面文字仍会保留，诊断仅留本机。每次运行建议使用独立 --output 目录。
+
+GUI 的网络/控件/验证码故障不再弹出阻塞式 warning 对话框，而在状态栏显示并写入运行日志。最新 failure 证据位于 %LOCALAPPDATA%/TPSWindowsClient/logs/failure；首页及 InternalCaptcha 页保存遮罩截图和脱敏 DOM，结果页只保存元数据。诊断写入失败不会终止浏览器线程。
+
+验证码、403、429 作为访问阻断处理，不当作空结果。不自动点击验证、不反复刷新、不换 IP 规避限制。人工验证完成后可检查一次并继续未提交任务。已发送的任务不会重复发送。
+
+## 重构关系
+
+app.py GUI 和 crawler.py -> browser.py（初始化、验证门控、显式等待、单次提交）
+browser.py -> browser_diagnostics.py（被动资源/错误码观察）+ runtime_log.py（轮换日志）+ diagnostic_capture.py（本机故障证据）
+core.py -> 输入校验、详情提取、Excel 输出
+qa_test.py -> 独立干净会话、断言、失败证据；tests/ -> 纯单元测试
+
+## 验证与限制
+
+运行单元测试：`python -m unittest discover -s tests -v`。
+Windows Actions 验证实际 EXE、离线异步页面、QA 成功/故障路径、Defender、下载后 EXE；证据属于离线测试，不代表真实网站验证或人员查询成功。生产环境的人机验证是否通过仍未验证，此源码不是 Cloudflare 验证修复或绕过包。
+
+Playwright 文档：https://playwright.dev/python/docs/actionability
+显式断言：https://playwright.dev/python/docs/api/class-locatorassertions
+Cloudflare 支持环境：https://developers.cloudflare.com/cloudflare-challenges/reference/supported-browsers/

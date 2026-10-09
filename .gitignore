@@ -18,3 +18,9 @@ logs/
 *.db-shm
 build/
 dist/
+
+
+logs/
+qa-success/
+qa-failure/
+.env

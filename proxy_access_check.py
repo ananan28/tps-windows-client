@@ -64,3 +64,4 @@ with sync_playwright() as p:
 Path('live-access-result.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
 print('LIVE_ACCESS_RESULT=' + json.dumps(result, ensure_ascii=False))
 
+

@@ -283,7 +283,7 @@ def main():
                     if kind == 'error':
                         messagebox.showerror('浏览器启动失败', value)
                     if kind == 'warning':
-                        messagebox.showwarning('浏览器操作提示', value)
+                        self.status.set(value + '（可打开运行日志查看诊断）')
                     if kind in ('error', 'warning'):
                         try:
                             (data_dir() / 'diagnostics.txt').write_text(value, encoding='utf-8')
@@ -338,4 +338,5 @@ def main():
 if __name__ == '__main__':
     if '--self-test' in sys.argv: self_test()
     else: main()
+
 

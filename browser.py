@@ -57,94 +57,101 @@ def first_visible(locator):
     return None
 
 
+class SubmissionUncertain(ValueError):
+    submitted = True
+
+
 def wait_visible(page, locator, timeout=15000):
-    import time
-    deadline = time.monotonic() + timeout / 1000
-    while time.monotonic() < deadline:
-        check_access(page)
-        item = first_visible(locator)
-        if item is not None and item.is_enabled():
-            return item
-        page.wait_for_timeout(150)
+    from playwright.sync_api import expect
     check_access(page)
-    event('control_timeout', 'failed')
-    raise ValueError('等待查询控件就绪超时；查询未提交。可能是脚本未加载或网页结构改变。')
+    item = locator.filter(visible=True).first
+    try:
+        expect(item).to_be_visible(timeout=timeout)
+        expect(item).to_be_enabled(timeout=timeout)
+    except AssertionError as exc:
+        check_access(page)
+        event('control_timeout', 'failed')
+        raise ValueError('查询控件未就绪；查询未提交。') from exc
+    check_access(page)
+    return item
+
+
+READY_JS = r'''selectors => {
+  const text=(document.body?.innerText||'').toLowerCase();
+  const challenge=/verify you are human|captcha challenge|just a moment|checking your browser|verification failed|automatic submission failed|access denied|rate limited/.test(text)
+    || /internalcaptcha|ratelimited|\/challenge/i.test(location.pathname);
+  return challenge || Array.from(document.querySelectorAll(selectors)).some(e =>
+    e.getClientRects().length && getComputedStyle(e).visibility!=='hidden' && !e.disabled && !e.readOnly);
+}'''
 
 
 def prepare_search(page, kind):
-    if not site_url(page.url):
-        raise ValueError('请先返回官网首页')
+    from playwright.sync_api import expect, TimeoutError as PWTimeout
+    if not site_url(page.url): raise ValueError('请先返回官网首页')
     check_access(page)
     phone = kind == '手机号'
     label = 'Phone' if phone else 'Email'
     pattern = re.compile(r'^\s*' + label + r'\s*$', re.I)
-    native_tabs = page.locator(f'#searchType{label}-d, #searchType{label}-m')
-    fallback_tabs = (
-        page.locator('label, a, button, [role="tab"]').filter(has_text=pattern)).or_(
-        page.get_by_text(pattern))
+    native = page.locator(f'#searchType{label}-d, #searchType{label}-m')
+    fallback = page.locator('label,a,button,[role="tab"]').filter(has_text=pattern).or_(page.get_by_text(pattern))
     selectors = ('#id-d-ph, #id-m-ph, input[type="tel"], input[name*="phone" i], input[name="ph"], input[placeholder*="phone" i]:not([placeholder*="name" i]):not([placeholder*="address" i])' if phone
-                 else '#id-d-em, #id-d-email, #id-m-email, input[type="email"], input[name*="email" i]')
+        else '#id-d-em, #id-d-email, #id-m-email, input[type="email"], input[name*="email" i]')
+    fields = page.locator(selectors).filter(visible=True).first
     event('tab_wait', 'phone' if phone else 'email')
-    event('field_wait', 'start')
-    deadline = time.monotonic() + 30
-    next_click = 0
-    attempts = 0
-    while time.monotonic() < deadline:
+    for attempt in range(3):
         check_access(page)
         field = first_visible(page.locator(selectors))
-        if field is not None and field.is_enabled():
-            # Only an actual displayed Phone/Email field proves the tab worked.
-            event('tab_ready', 'ok')
-            event('field_ready', 'ok')
-            return field
-        tab = first_visible(native_tabs)
-        if tab is None:
-            tab = first_visible(fallback_tabs)
-        if tab is not None and tab.is_enabled() and time.monotonic() >= next_click:
-            # A visible tab can precede its JavaScript click listener. Reapply
-            # only the tab selection until it takes effect; never submit here.
-            selected = 'search-type-selected' in (tab.get_attribute('class') or '')
-            if not selected:
-                attempts += 1
-                event('tab_retry', 'start', count=attempts)
+        if field is None:
+            tab = first_visible(native)
+            if tab is None: tab = wait_visible(page, fallback, timeout=5000)
+            expect(tab).to_be_enabled(timeout=3000)
+            tab.click(trial=True, timeout=3000)  # Visible/stable/receives events.
+            if 'search-type-selected' not in (tab.get_attribute('class') or ''):
+                event('tab_retry', 'start', count=attempt+1)
                 tab.click(timeout=3000)
-            next_click = time.monotonic() + 1
-        page.wait_for_timeout(150)
-    check_access(page)
-    event('control_timeout', 'failed', count=attempts)
-    raise ValueError(f'{label} 标签切换未生效或输入框未显示；查询未提交。请查看运行日志，不能将此状态当作无结果。')
+        try:
+            page.wait_for_function(READY_JS, arg=selectors, timeout=7000)
+            check_access(page)
+            expect(fields).to_be_visible(timeout=1000)
+            expect(fields).to_be_editable(timeout=1000)
+            event('tab_ready', 'ok'); event('field_ready', 'ok')
+            return fields
+        except (PWTimeout, AssertionError):
+            check_access(page)
+    event('control_timeout', 'failed', count=3)
+    raise ValueError(f'{label} 标签切换未生效或输入框不可交互；查询未提交。请查看本机诊断文件。')
 
 
 def submit_search(page, kind, value):
+    from playwright.sync_api import expect, TimeoutError as PWTimeout
     field = prepare_search(page, kind)
+    check_access(page)
+    expect(field).to_be_editable(timeout=3000)
     field.fill(value)
     event('input_fill', 'ok')
     form = field.locator('xpath=ancestor::form[1]')
     phone = kind == '手机号'
     submit = first_visible(page.locator('#btnSubmit-d-ph, #btnSubmit-m-ph' if phone else '#btnSubmit-d-email, #btnSubmit-m-email'))
-    if submit is None:
-        submit = first_visible(form.locator('button[type="submit"], input[type="submit"]'))
+    if submit is None: submit = first_visible(form.locator('button[type="submit"],input[type="submit"]'))
+    if submit is not None: submit.click(trial=True, timeout=3000)
+    check_access(page)
     before = page.url
     started = time.monotonic()
     event('submit_click', 'start')
-    if submit is not None:
-        submit.click()
-    else:
-        field.press('Enter')
-    event('navigation_wait', 'start')
+    # Any failure from this point can be after dispatch. Never retry submission.
     try:
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline:
-            page.wait_for_timeout(150)
-            check_access(page)
-            if page.url != before:
-                event('navigation_done', 'ok', elapsed_ms=int((time.monotonic()-started)*1000))
-                return
+        if submit is not None: submit.click(timeout=7000)
+        else: field.press('Enter', timeout=7000)
+        event('navigation_wait', 'start')
+        page.wait_for_url(lambda url: url != before, wait_until='domcontentloaded', timeout=15000)
+        check_access(page)
+        event('navigation_done', 'ok', elapsed_ms=int((time.monotonic()-started)*1000))
     except AccessBlocked as exc:
         exc.submitted = True
         raise
-    event('navigation_timeout', 'failed', submitted=True)
-    raise ValueError('提交后未确认跳转，请检查浏览器提示；软件不会自动重复提交。')
+    except Exception as exc:
+        event('navigation_timeout', 'failed', submitted=True)
+        raise SubmissionUncertain('已尝试提交，但未确认完成；请检查浏览器，软件不会重复发送。') from exc
 
 
 def error_message(exc, stage):
@@ -229,10 +236,8 @@ class BrowserWorker(threading.Thread):
                     event('browser_ready', 'ok')
                     self.emit('ready', '浏览器已就绪；验证未完成时查询会暂停')
                     while not self.stop_event.is_set() and not page.is_closed():
-                        try: command, data = self.commands.get_nowait()
-                        except queue.Empty:
-                            page.wait_for_timeout(150)
-                            continue
+                        try: command, data = self.commands.get(timeout=0.2)
+                        except queue.Empty: continue
                         event('command_start', command)
                         try:
                             if command == 'home':
@@ -259,15 +264,26 @@ class BrowserWorker(threading.Thread):
                                 row['query'] = data
                                 self.emit('row', row)
                                 self.emit('status', '当前详情已保存到本机缓存，可导出 Excel')
+                        except SubmissionUncertain as exc:
+                            if command in ('search', 'resume'): self.pending_search = (data, True)
+                            from diagnostic_capture import capture_failure
+                            capture_failure(page, 'submission')
+                            self.emit('warning', str(exc))
                         except AccessBlocked as exc:
                             if command in ('search', 'resume'):
                                 self.pending_search = (data, exc.submitted or (command == 'resume' and submitted))
+                            from diagnostic_capture import capture_failure
+                            capture_failure(page, 'challenge')
                             event('operation_error', 'challenge', submitted=exc.submitted)
                             self.emit('warning', str(exc))
                         except ValueError as exc:
+                            from diagnostic_capture import capture_failure
+                            capture_failure(page, 'controls')
                             event('operation_error', 'failed')
                             self.emit('warning', str(exc))
                         except Exception as exc:
+                            from diagnostic_capture import capture_failure
+                            capture_failure(page, 'network')
                             event('operation_error', 'failed')
                             self.emit('warning', error_message(exc, '浏览器操作失败'))
                         finally:
@@ -282,4 +298,5 @@ class BrowserWorker(threading.Thread):
         finally:
             event('browser_close', 'failed' if failed else 'ok')
             self.emit('closed', '' if failed else '浏览器已停止；已采集结果仍可导出')
+
 

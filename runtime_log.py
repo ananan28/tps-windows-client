@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-EVENTS = frozenset('app_start app_close browser_start browser_ready browser_close homepage_load tab_wait tab_retry tab_ready field_wait field_ready input_fill submit_click navigation_wait navigation_done control_timeout navigation_timeout access_pause resume_request command_start command_done operation_error result_saved export_done export_error cache_error input_rejected stop_request unhandled_error resource_failed network_error resource_http document_http challenge_code diagnostic_error browser_dialog popup_open challenge_failure'.split())
+EVENTS = frozenset('evidence_saved app_start app_close browser_start browser_ready browser_close homepage_load tab_wait tab_retry tab_ready field_wait field_ready input_fill submit_click navigation_wait navigation_done control_timeout navigation_timeout access_pause resume_request command_start command_done operation_error result_saved export_done export_error cache_error input_rejected stop_request unhandled_error resource_failed network_error resource_http document_http challenge_code diagnostic_error browser_dialog popup_open challenge_failure'.split())
 OUTCOMES = frozenset('start ok failed challenge rate_limit phone email search resume home collect proxy direct already_submitted not_submitted timeout proxy_auth proxy_connection dns browser_missing browser_closed unknown cloudflare site pat tls extension_block manual'.split())
 _logger = None
 _lock = threading.Lock()
@@ -74,3 +74,4 @@ def event(code, outcome=None, *, http_status=None, elapsed_ms=None, count=None, 
         setup_logging().info(json.dumps(row, ensure_ascii=False))
     except (OSError, ValueError):
         pass  # A disk/logging error must not terminate the browser worker.
+
