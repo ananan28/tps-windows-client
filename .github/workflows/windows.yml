@@ -40,6 +40,7 @@ jobs:
           if ($LASTEXITCODE -ne 1) { throw 'QA timeout was not detected' }
           if (-not (Test-Path qa-failure/failure.png)) { throw 'QA failure screenshot missing' }
           if (-not (Test-Path qa-failure/failure.html)) { throw 'QA failure DOM missing' }
+          $global:LASTEXITCODE = 0  # Expected failure path returned 1 and was verified.
       - name: Build portable Windows client
         run: python -m PyInstaller --noconfirm --clean --onedir --windowed --name TPSWindowsClient --collect-all playwright app.py
       - name: Smoke test actual packaged executable offline
