@@ -30,3 +30,5 @@ jobs:
 # Checked Python syntax before diagnostic run.
 
 # 0.1.7: diagnose live form readiness without waiting for all page resources.
+
+# 0.1.10: inspect actual tab control ancestors; never submit a query.

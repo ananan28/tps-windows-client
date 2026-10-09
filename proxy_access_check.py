@@ -41,6 +41,15 @@ with sync_playwright() as p:
                 result['tab_error_type'] = type(exc).__name__
             result['inputs'] = page.locator('input').evaluate_all("""els => els.map(e => ({
                 id:e.id,type:e.type,name:e.name,placeholder:e.placeholder,visible:!!e.getClientRects().length}))""")
+            result['tab_structure'] = page.locator('body *').evaluate_all("""els => els.filter(e =>
+                /^(phone|email)$/i.test((e.textContent||'').trim()) && !e.querySelector('*')).map(e => {
+                  const attrs = n => n ? {tag:n.tagName,id:n.id,cls:n.className,
+                    role:n.getAttribute('role'),onclick:n.getAttribute('onclick'),
+                    target:n.getAttribute('data-target'),toggle:n.getAttribute('data-toggle'),
+                    href:(n.getAttribute('href')||'').startsWith('#')?n.getAttribute('href'):null} : null;
+                  return {self:attrs(e),parent:attrs(e.parentElement),grandparent:attrs(e.parentElement.parentElement)};
+                })""")
+            result['ready_state'] = page.evaluate('document.readyState')
             result['tabs'] = page.locator('label,a,button,[role="tab"]').evaluate_all("""els => els.filter(e =>
                 /^(phone|email)$/i.test((e.textContent||'').trim())).map(e => ({
                 tag:e.tagName,id:e.id,for:e.getAttribute('for'),role:e.getAttribute('role'),visible:!!e.getClientRects().length}))""")
